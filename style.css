@@ -1,133 +1,245 @@
-html, body, div, label, canvas{
-	margin: 0;
-	height: 100%;
-	width: 100%;
-	overflow: hidden;	
+html, body, div, label, canvas {
+    margin: 0;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
 }
 
-label{
-	font-size: 10vh;
+label {
+    font-size: 10vh;
 }
 
 video, input {
-	display: none;
+    display: none;
 }
 
 .hud {
-	opacity: 1;
-	color: white;
+    opacity: 1;
+    color: white;
+    transition: opacity 0.3s ease; /* Add smooth transition for opacity changes */
 }
 
 #parent {
-	text-align: center;
-	font-family: monospace;
-	display: grid;
-	grid-template-columns: repeat(9, 1fr);
-	grid-template-rows: repeat(6, 1fr);
-	grid-column-gap: 1%;
-	grid-row-gap: 0px;
+    text-align: center;
+    font-family: monospace;
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    grid-template-rows: repeat(6, 1fr);
+    grid-column-gap: 1%;
+    grid-row-gap: 0px;
 }
 
 #canvas {
-	grid-area: 1 / 1 / 7 / 10;
-	z-index: -2;
+    grid-area: 1 / 1 / 7 / 10;
+    z-index: -2;
 }
 
 #box {
-	background-color: gray;
-	grid-area: 6 / 1 / 7 / 10;
-	border-radius: 0.5em;
-	z-index: -1;
+    background-color: rgba(50, 50, 50, 0.7); /* Slightly transparent dark gray */
+    grid-area: 6 / 1 / 7 / 10;
+    border-radius: 0.5em;
+    z-index: -1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 #heading {
-	grid-area: 2 / 2 / 3 / 9;
-	display: none;
+    grid-area: 2 / 2 / 3 / 9;
+    display: none;
 }
 
-#description { 
-	grid-area: 1 / 1 / 2 / 5;
-	display: block;
-	text-align: left;
-	padding: 10px;
-	z-index: 1;
+#description {
+    grid-area: 1 / 1 / 2 / 5;
+    display: block;
+    text-align: left;
+    padding: 10px;
+    z-index: 1;
+    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background */
+    border-radius: 5px;
+    margin: 10px;
+    max-width: calc(100% - 20px);
+    pointer-events: none; /* Let mouse events pass through */
 }
 
 #current-video {
-	font-weight: bold;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	max-width: 100%;
-	display: block;
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    display: block;
+}
+
+#file-info {
+    display: block;
+    font-size: 1.5vh;
+    margin-top: 5px;
 }
 
 #message {
-	display: none;
+    display: none;
+    background-color: rgba(0, 0, 0, 0.7);
+    border-radius: 5px;
+    padding: 5px 10px;
+    margin-top: 5px;
 }
 
 #fps {
-	display: none;
+    display: block;
+    font-size: 1.5vh;
+    margin-top: 5px;
 }
 
-#seekbar { 
-	grid-area: 6 / 4 / 7 / 7;
-	cursor: pointer;
-	height: 50%;
-	top: 25%;
-	outline: thin solid white;
-	overflow: hidden;
-	position: relative;
-	width: 100%;
+#seekbar {
+    grid-area: 6 / 4 / 7 / 7;
+    cursor: pointer;
+    height: 50%;
+    outline: thin solid white;
+    overflow: hidden;
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    top: 50%;
+    transform: translateY(-50%);
+    border-radius: 4px;
 }
 
-#seekbar_span{
-  background-color: white;
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  width: 0;
+#seekbar_span {
+    background-color: white;
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 0;
+    transition: width 0.1s linear;
 }
 
-#open { 
-	grid-area: 6 / 1 / 7 / 2;
-	cursor: pointer;
+#open, #play, #prev, #next, #enhance, #fullscreen {
+    grid-area: 6 / 1 / 7 / 2;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-#play { 
-	grid-area: 6 / 3 / 7 / 4;
-	cursor: pointer;
+/* Improved button styling */
+#open, #play, #prev, #next, #enhance, #fullscreen {
+    opacity: 0.85;
+    transition: all 0.2s ease;
+    border-radius: 50%;
+    background-color: rgba(40, 40, 40, 0.6);
+    width: 70%;
+    height: 70%;
+    margin: auto;
+}
+
+#open:hover, #play:hover, #prev:hover, #next:hover, #enhance:hover, #fullscreen:hover {
+    opacity: 1;
+    background-color: rgba(60, 60, 60, 0.8);
+    transform: scale(1.05);
+}
+
+#open {
+    grid-area: 6 / 1 / 7 / 2;
+}
+
+#play {
+    grid-area: 6 / 3 / 7 / 4;
 }
 
 #prev {
-	grid-area: 6 / 2 / 7 / 3;
-	cursor: pointer;
+    grid-area: 6 / 2 / 7 / 3;
 }
 
 #next {
-	grid-area: 6 / 7 / 7 / 8;
-	cursor: pointer;
+    grid-area: 6 / 7 / 7 / 8;
 }
 
-#enhance { 
-	grid-area: 6 / 8 / 7 / 9;
-	border: dashed;
-	cursor: pointer;
+#enhance {
+    grid-area: 6 / 8 / 7 / 9;
+    position: relative;
+}
+
+#enhance.active {
+    border: 2px solid #ffcc00;
+    box-shadow: 0 0 15px rgba(255, 204, 0, 0.6);
+    background-color: rgba(60, 60, 60, 0.8);
+}
+
+#enhance.active svg path {
+    fill: #ffcc00;
+}
+
+/* Make the enhance button shine when active */
+#enhance.active::after {
+    content: '';
+    position: absolute;
+    top: -10%;
+    left: -10%;
+    width: 120%;
+    height: 120%;
+    background: radial-gradient(circle, rgba(255,204,0,0.4) 0%, rgba(255,204,0,0) 70%);
+    pointer-events: none;
+    animation: enhanceGlow 1.5s infinite alternate;
+    z-index: -1;
+}
+
+@keyframes enhanceGlow {
+    from { opacity: 0.3; }
+    to { opacity: 0.8; }
 }
 
 #fullscreen {
-	grid-area: 6 / 9 / 7 / 10;
-	cursor: pointer;
+    grid-area: 6 / 9 / 7 / 10;
 }
 
 .fullscreen {
-	position: fixed;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	width: 100%;
-	height: 100%;
-	z-index: 9999;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 9999;
+}
+
+/* Optimize SVG icons in the buttons */
+svg {
+    width: 60%;
+    height: 60%;
+    fill: white;
+    transition: fill 0.3s ease;
+}
+
+/* Tape deck style for prev/next buttons */
+#prev svg, #next svg {
+    fill: #f0f0f0;
+}
+
+#prev:hover svg, #next:hover svg {
+    fill: #ffffff;
+}
+
+/* Eject button styling */
+#open svg {
+    fill: #f0f0f0;
+}
+
+#open:hover svg {
+    fill: #ffffff;
+    transform: translateY(-2px);
+    transition: transform 0.2s ease;
+}
+
+/* Play/pause button styling */
+#play svg {
+    fill: #4CAF50;  /* Green color for play/pause */
+}
+
+#play:hover svg {
+    fill: #81C784;
 }
