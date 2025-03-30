@@ -2,20 +2,17 @@
 <html lang="en">
 	<head>
 		<meta charset="UTF-8" />
-		<title>video.play</title>
+		<title>FSR Enhanced Video Player</title>
 		<link rel="stylesheet" href="./style.css">
 	</head>
 	<body>
 		<div id="parent">
 			<canvas id="canvas"></canvas>
 			<div class="hud" id="box"></div>
-			<div class="hud" id="heading">
-				<h1>video.play</h1>
-				<h2>ai&nbsp;enhanced&nbsp;movies</h2>
-			</div>
 			<div class="hud" id="description">
 				<span id="fps"></span>
 				<span id="message"></span>
+				<span id="current-video"></span>
 			</div>
 			<div class="hud" id="seekbar">
 				<span id="seekbar_span"></span>
@@ -23,10 +20,17 @@
 			<label class="hud" id="open" for="eject">&#x23cf;</label>
 			<label class="hud" id="play">&#x23ef;</label>
 			<label class="hud" id="enhance">&#x2728;</label>
+			<label class="hud" id="prev">&#x23EA;</label>
+			<label class="hud" id="next">&#x23E9;</label>
+			<label class="hud" id="fullscreen">&#x26F6;</label>
 		</div>
-		<input id="eject" type="file" accept="video/*"/>
+		<input id="eject" type="file" accept="video/*" multiple/>
 		<video autoplay></video>
-		<script src="./glea.js"></script>
+		<!-- Load our WebGL utilities replacement for glea.js -->
+		<script src="./webgl-utils.js"></script>
+		<!-- Then load the shader.js which defines frag and vert variables -->
+		<script src="./shader.js"></script>
+		<!-- Finally load script.js which uses the variables defined in shader.js -->
 		<script src="./script.js"></script>
 	</body>
 </html>

@@ -22,36 +22,56 @@ video, input {
 	text-align: center;
 	font-family: monospace;
 	display: grid;
-	grid-template-columns: repeat(7, 1fr);
+	grid-template-columns: repeat(9, 1fr);
 	grid-template-rows: repeat(6, 1fr);
-	grid-column-gap: 3%;
+	grid-column-gap: 1%;
 	grid-row-gap: 0px;
 }
 
 #canvas {
-	grid-area: 1 / 1 / 7 / 8;
+	grid-area: 1 / 1 / 7 / 10;
 	z-index: -2;
 }
 
 #box {
 	background-color: gray;
-	grid-area: 6 / 1 / 7 / 8;
+	grid-area: 6 / 1 / 7 / 10;
 	border-radius: 0.5em;
 	z-index: -1;
 }
 
 #heading {
-	grid-area: 2 / 2 / 3 / 7;
+	grid-area: 2 / 2 / 3 / 9;
 	display: none;
 }
 
 #description { 
-	grid-area: 3 / 2 / 4 / 7;
-	display: none; 
+	grid-area: 1 / 1 / 2 / 5;
+	display: block;
+	text-align: left;
+	padding: 10px;
+	z-index: 1;
+}
+
+#current-video {
+	font-weight: bold;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 100%;
+	display: block;
+}
+
+#message {
+	display: none;
+}
+
+#fps {
+	display: none;
 }
 
 #seekbar { 
-	grid-area: 6 / 3 / 7 / 7;
+	grid-area: 6 / 4 / 7 / 7;
 	cursor: pointer;
 	height: 50%;
 	top: 25%;
@@ -72,13 +92,42 @@ video, input {
 
 #open { 
 	grid-area: 6 / 1 / 7 / 2;
+	cursor: pointer;
 }
 
 #play { 
+	grid-area: 6 / 3 / 7 / 4;
+	cursor: pointer;
+}
+
+#prev {
 	grid-area: 6 / 2 / 7 / 3;
+	cursor: pointer;
+}
+
+#next {
+	grid-area: 6 / 7 / 7 / 8;
+	cursor: pointer;
 }
 
 #enhance { 
-	grid-area: 6 / 7 / 7 / 8;
+	grid-area: 6 / 8 / 7 / 9;
 	border: dashed;
+	cursor: pointer;
+}
+
+#fullscreen {
+	grid-area: 6 / 9 / 7 / 10;
+	cursor: pointer;
+}
+
+.fullscreen {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	width: 100%;
+	height: 100%;
+	z-index: 9999;
 }

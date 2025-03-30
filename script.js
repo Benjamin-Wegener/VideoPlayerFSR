@@ -1,602 +1,518 @@
-const glsl = x => x;
-const frag = glsl`
-// Copyright (c) 2021 Advanced Micro Devices, Inc. All rights reserved.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-//
-// FidelityFX FSR v1.0.2 by AMD
-// ported to mpv by agyild - https://gist.github.com/agyild/82219c545228d70c5604f865ce0b0ce5
-// ported to WebGL by goingdigital - https://www.shadertoy.com/view/stXSWB
-// ported to android for html5 video by @BenjaminWegener
-// using glea.js by learosema - https://github.com/learosema/glea for webGL functions
-// using colorspace functions from tobspr - https://github.com/tobspr/GLSL-Color-Spaces/blob/master/ColorSpaces.inc.glsl
+// Wait for shader.js to load before using frag and vert variables
+document.addEventListener('DOMContentLoaded', function() {
+  // Make sure we can access the shader variables
+  if (typeof frag === 'undefined' || typeof vert === 'undefined') {
+    console.error('Shader variables not found! Make sure shader.js is loaded before script.js');
+    document.querySelector('#message').innerHTML = 'Error: Shader not loaded correctly';
+    document.querySelector('#message').style.display = 'block';
+    return;
+  }
 
-#define SHARPENING 2.0 // Sharpening intensity: Adjusts sharpening intensity by averaging the original pixels to the sharpened result. 1.0 is the unmodified default. 0.0 to 1.0.
-#define CONTRAST 2.0 // Adjusts the range the shader adapts to high contrast (0 is not all the way off). Higher values = more high contrast sharpening. 0.0 to 1.0.
-#define PERFORMANCE 1 // Whether to use optimizations for performance with loss of quality
+  const HUD = document.querySelectorAll('.hud');
+  var fade = " ";
+  var ENHANCE = true;
+  var PLAY = true;
+  const video = document.querySelector('video');
+  let enhanceButton = document.getElementById("enhance");
+  enhanceButton.addEventListener('click', () => {
+      ENHANCE = !ENHANCE;
+      if (ENHANCE) {enhanceButton.style.border = "dashed";}
+      else {enhanceButton.style.border = "none";}
+  });
+  let playButton = document.getElementById("play");
+  playButton.addEventListener('click', () => {
+      PLAY = !PLAY;
+      if (PLAY) {video.play();}
+      else {video.pause();}
+  });
 
-precision highp float;
+  // Video playlist functionality
+  let videoFiles = [];
+  let currentVideoIndex = 0;
+  let currentVideoElement = document.getElementById("current-video");
 
-uniform float width;
-uniform float height;
-uniform float texWidth;
-uniform float texHeight;
-uniform bool ENHANCE;
-uniform sampler2D camTexture;
+  // Next video button
+  let nextButton = document.getElementById("next");
+  if (nextButton) {
+    nextButton.addEventListener('click', () => {
+        if (videoFiles.length > 1) {
+            currentVideoIndex = (currentVideoIndex + 1) % videoFiles.length;
+            loadVideo(videoFiles[currentVideoIndex]);
+        }
+    });
+  }
 
-// Used to convert from linear RGB to XYZ space
-const mat3 RGB_2_XYZ = (mat3(
-    0.4124564, 0.2126729, 0.0193339,
-    0.3575761, 0.7151522, 0.1191920,
-    0.1804375, 0.0721750, 0.9503041
-));
+  // Previous video button
+  let prevButton = document.getElementById("prev");
+  if (prevButton) {
+    prevButton.addEventListener('click', () => {
+        if (videoFiles.length > 1) {
+            currentVideoIndex = (currentVideoIndex - 1 + videoFiles.length) % videoFiles.length;
+            loadVideo(videoFiles[currentVideoIndex]);
+        }
+    });
+  }
 
-// Used to convert from XYZ to linear RGB space
-const mat3 XYZ_2_RGB = (mat3(
-     3.2404542,-0.9692660, 0.0556434,
-    -1.5371385, 1.8760108,-0.2040259,
-    -0.4985314, 0.0415560, 1.0572252
-));
-// Converts a color from linear RGB to XYZ space
-vec3 rgb_to_xyz(vec3 rgb) {
-    return RGB_2_XYZ * rgb;
-}
+  // Fullscreen functionality
+  let fullscreenButton = document.getElementById("fullscreen");
+  let parentElement = document.getElementById("parent");
+  if (fullscreenButton) {
+    fullscreenButton.addEventListener('click', () => {
+        toggleFullScreen(parentElement);
+    });
+  }
 
-// Converts a color from XYZ to linear RGB space
-vec3 xyz_to_rgb(vec3 xyz) {
-    return XYZ_2_RGB * xyz;
-}
+  function toggleFullScreen(element) {
+      if (!document.fullscreenElement) {
+          // Enter fullscreen
+          if (element.requestFullscreen) {
+              element.requestFullscreen();
+          } else if (element.webkitRequestFullscreen) { /* Safari */
+              element.webkitRequestFullscreen();
+          } else if (element.msRequestFullscreen) { /* IE11 */
+              element.msRequestFullscreen();
+          }
+      } else {
+          // Exit fullscreen
+          if (document.exitFullscreen) {
+              document.exitFullscreen();
+          } else if (document.webkitExitFullscreen) { /* Safari */
+              document.webkitExitFullscreen();
+          } else if (document.msExitFullscreen) { /* IE11 */
+              document.msExitFullscreen();
+          }
+      }
+  }
 
-/* EASU stage
-*
-* This takes a reduced resolution source, and scales it up while preserving detail.
-*
-* Updates:
-*   stretch definition fixed. Thanks nehon for the bug report!
-*/
+  // Fix for controls fading out automatically
+  let fadeTimeout;
+  let isSettingOpacity = false;
 
-vec3 FsrEasuCF(vec2 p) {
-	vec2 uv = (p + .5) / vec2(texWidth, texHeight);
-	vec4 color = texture2D(camTexture, uv);
-    return rgb_to_xyz(color.rgb);
-}
+  function startFadeTimeout() {
+      // Clear any existing timeout
+      clearTimeout(fadeTimeout);
+      
+      // Start a new timeout for fading
+      fadeTimeout = setTimeout(function() {
+          var fadeEffect = setInterval(function () {
+              let stillFading = false;
+              HUD.forEach((node) => {
+                  // Don't fade the description (which contains the video name)
+                  if (node.id === "description") {
+                      return;
+                  }
+                  if (parseFloat(node.style.opacity) > 0) {
+                      node.style.opacity = Math.max(0, parseFloat(node.style.opacity) - 0.02).toString();
+                      stillFading = true;
+                  }
+              });
+              // If nothing is still fading, clear the interval
+              if (!stillFading) {
+                  clearInterval(fadeEffect);
+              }
+          }, 100);
+      }, 3000); // Wait 3 seconds before starting to fade
+  }
 
-/**** EASU ****/
-void FsrEasuCon(
-    out vec4 con0,
-    out vec4 con1,
-    out vec4 con2,
-    out vec4 con3,
-    // This the rendered image resolution being upscaled
-    vec2 inputViewportInPixels,
-    // This is the resolution of the resource containing the input image (useful for dynamic resolution)
-    vec2 inputSizeInPixels,
-    // This is the display resolution which the input image gets upscaled to
-    vec2 outputSizeInPixels
-)
-{
-    // Output integer position to a pixel position in viewport.
-    con0 = vec4(
-        inputViewportInPixels.x/outputSizeInPixels.x,
-        inputViewportInPixels.y/outputSizeInPixels.y,
-        .5*inputViewportInPixels.x/outputSizeInPixels.x-.5,
-        .5*inputViewportInPixels.y/outputSizeInPixels.y-.5
-    );
-    // Viewport pixel position to normalized image space.
-    // This is used to get upper-left of 'F' tap.
-    con1 = vec4(1,1,1,-1)/inputSizeInPixels.xyxy;
-    // Centers of gather4, first offset from upper-left of 'F'.
-    //      +---+---+
-    //      |   |   |
-    //      +--(0)--+
-    //      | b | c |
-    //  +---F---+---+---+
-    //  | e | f | g | h |
-    //  +--(1)--+--(2)--+
-    //  | i | j | k | l |
-    //  +---+---+---+---+
-    //      | n | o |
-    //      +--(3)--+
-    //      |   |   |
-    //      +---+---+
-    // These are from (0) instead of 'F'.
-    con2 = vec4(-1,2,1,2)/inputSizeInPixels.xyxy;
-    con3 = vec4(0,4,0,0)/inputSizeInPixels.xyxy;
-}
+  // Initialize the fade timeout
+  startFadeTimeout();
 
-// Filtering for a given tap for the scalar.
-void FsrEasuTapF(
-    inout vec3 aC, // Accumulated color, with negative lobe.
-    inout float aW, // Accumulated weight.
-    vec2 off, // Pixel offset from resolve position to tap.
-    vec2 dir, // Gradient direction.
-    vec2 len, // Length.
-    float lob, // Negative lobe strength.
-    float clp, // Clipping point.
-    vec3 c
-)
-{
-    // Tap color.
-    // Rotate offset by direction.
-    vec2 v = vec2(dot(off, dir), dot(off,vec2(-dir.y,dir.x)));
-    // Anisotropy.
-    v *= len;
-    // Compute distance^2.
-    float d2 = min(dot(v,v),clp);
-    // Limit to the window as at corner, 2 taps can easily be outside.
-    // Approximation of lancos2 without sin() or rcp(), or sqrt() to get x.
-    //  (25/16 * (2/5 * x^2 - 1)^2 - (25/16 - 1)) * (1/4 * x^2 - 1)^2
-    //  |_______________________________________|   |_______________|
-    //                   base                             window
-    // The general form of the 'base' is,
-    //  (a*(b*x^2-1)^2-(a-1))
-    // Where 'a=1/(2*b-b^2)' and 'b' moves around the negative lobe.
-    float wB = .4 * d2 - 1.;
-    float wA = lob * d2 -1.;
-    wB *= wB;
-    wA *= wA;
-    wB = 1.5625*wB-.5625;
-    float w=  wB * wA;
-    // Do weighted average.
-    aC += c*w;
-    aW += w;
-}
+  // Create a placeholder texture image for loading state
+  let placeholderCanvas = document.createElement('canvas');
+  placeholderCanvas.width = 2;
+  placeholderCanvas.height = 2;
+  let placeholderCtx = placeholderCanvas.getContext('2d');
+  placeholderCtx.fillStyle = 'black';
+  placeholderCtx.fillRect(0, 0, 2, 2);
+  let placeholderImage = placeholderCanvas;
 
-//------------------------------------------------------------------------------------------------------------------------------
-// Accumulate direction and length.
-void FsrEasuSetF(
-    inout vec2 dir,
-    inout float len,
-    float w,
-    float lA,float lB,float lC,float lD,float lE
-)
-{
-    // Direction is the '+' diff.
-    //    a
-    //  b c d
-    //    e
-    // Then takes magnitude from abs average of both sides of 'c'.
-    // Length converts gradient reversal to 0, smoothly to non-reversal at 1, shaped, then adding horz and vert terms.
-    float lenX = max(abs(lD - lC), abs(lC - lB));
-    float dirX = lD - lB;
-    dir.x += dirX * w;
-    lenX = clamp(abs(dirX)/lenX,0.,1.);
-    lenX *= lenX;
-    len += lenX * w;
-    // Repeat for the y axis.
-    float lenY = max(abs(lE - lC), abs(lC - lA));
-    float dirY = lE - lA;
-    dir.y += dirY * w;
-    lenY = clamp(abs(dirY) / lenY,0.,1.);
-    lenY *= lenY;
-    len += lenY * w;
-}
+  let fallbackImage = null;
+  let camTexture = null;
+  let videoReady = false;
+  let videoLoadError = false;
+  let webgl = null;
 
-//------------------------------------------------------------------------------------------------------------------------------
-void FsrEasuF(
-    out vec3 pix,
-    vec2 ip, // Integer pixel position in output.
-    // Constants generated by FsrEasuCon().
-    vec4 con0, // xy = output to input scale, zw = first pixel offset correction
-    vec4 con1,
-    vec4 con2,
-    vec4 con3
-)
-{
-    //------------------------------------------------------------------------------------------------------------------------------
-    // Get position of 'f'.
-    vec2 pp = ip * con0.xy + con0.zw; // Corresponding input pixel/subpixel
-    vec2 fp = floor(pp);// fp = source nearest pixel
-    pp -= fp; // pp = source subpixel
+  // Initialize WebGL with shaders from shader.js
+  const canvas = document.getElementById('canvas');
+  webgl = new WebGLUtils(canvas, {
+    preserveDrawingBuffer: true,
+    alpha: false
+  });
+  
+  // Create shader program
+  webgl.createProgram(vert, frag);
+  webgl.useProgram();
+  
+  // Create position buffer with 2D coordinates for a full-screen quad
+  webgl.createBuffer('position', [1, 1, -1, 1, 1, -1, -1, -1], 2);
+  
+  // Handle window resize
+  window.addEventListener('resize', () => {
+    webgl.resize();
+  });
+  
+  // Initial resize
+  webgl.resize();
 
-    //------------------------------------------------------------------------------------------------------------------------------
-    // 12-tap kernel.
-    //    b c
-    //  e f g h
-    //  i j k l
-    //    n o
-    // Gather 4 ordering.
-    //  a b
-    //  r g
-    vec2 p0 = fp * con1.xy + con1.zw;
-    
-    // These are from p0 to avoid pulling two constants on pre-Navi hardware.
-    vec2 p1 = p0 + con2.xy;
-    vec2 p2 = p0 + con2.zw;
-    vec2 p3 = p0 + con3.xy;
+  function loadVideo(file) {
+      if (!file) return;
+      
+      const videoNode = document.querySelector('video');
+      
+      // Reset texture first
+      if (camTexture) {
+          const gl = webgl.gl;
+          gl.deleteTexture(camTexture);
+          camTexture = null;
+      }
+      
+      // Create a placeholder texture while video loads
+      const gl = webgl.gl;
+      camTexture = webgl.createTexture(0);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, placeholderImage);
+      webgl.setActiveTexture(0, camTexture);
+      webgl.setInt('camTexture', 0);
+      
+      // Now load the video
+      const fileURL = URL.createObjectURL(file);
+      videoNode.src = fileURL;
+      
+      // Update the current video display
+      if (currentVideoElement) {
+        currentVideoElement.textContent = file.name;
+      }
+      
+      // Reset the seekbar
+      document.querySelector("#seekbar_span").style.width = "0%";
+      
+      // If video is paused, play it
+      if (videoNode.paused) {
+          PLAY = true;
+          videoNode.play();
+      }
+  }
 
-    // TextureGather is not available on WebGL2
-    vec4 off = vec4(-.5,.5,-.5,.5)*con1.xxyy;
-    // textureGather to texture offsets
-    // x=west y=east z=north w=south
-    vec3 bC = FsrEasuCF(p0 + off.xw); float bL = bC.g + 0.5 *(bC.r + bC.b);
-    vec3 cC = FsrEasuCF(p0 + off.yw); float cL = cC.g + 0.5 *(cC.r + cC.b);
-    vec3 iC = FsrEasuCF(p1 + off.xw); float iL = iC.g + 0.5 *(iC.r + iC.b);
-    vec3 jC = FsrEasuCF(p1 + off.yw); float jL = jC.g + 0.5 *(jC.r + jC.b);
-    vec3 fC = FsrEasuCF(p1 + off.yz); float fL = fC.g + 0.5 *(fC.r + fC.b);
-    vec3 eC = FsrEasuCF(p1 + off.xz); float eL = eC.g + 0.5 *(eC.r + eC.b);
-    vec3 kC = FsrEasuCF(p2 + off.xw); float kL = kC.g + 0.5 *(kC.r + kC.b);
-    vec3 lC = FsrEasuCF(p2 + off.yw); float lL = lC.g + 0.5 *(lC.r + lC.b);
-    vec3 hC = FsrEasuCF(p2 + off.yz); float hL = hC.g + 0.5 *(hC.r + hC.b);
-    vec3 gC = FsrEasuCF(p2 + off.xz); float gL = gC.g + 0.5 *(gC.r + gC.b);
-    vec3 oC = FsrEasuCF(p3 + off.yz); float oL = oC.g + 0.5 *(oC.r + oC.b);
-    vec3 nC = FsrEasuCF(p3 + off.xz); float nL = nC.g + 0.5 *(nC.r + nC.b);
+  // Hide the fps display
+  const fpsElem = document.getElementById("fps");
+  if (fpsElem) {
+    fpsElem.style.display = "none";
+  }
+
+  let then = 0;
+  function loop(time) {
+      loop.isRunning = true;
+      
+      time *= 0.001;  // convert to seconds
    
-    //------------------------------------------------------------------------------------------------------------------------------
-    // Simplest multi-channel approximate luma possible (luma times 2, in 2 FMA/MAD).
-    // Accumulate for bilinear interpolation.
-    vec2 dir = vec2(0);
-    float len = 0.;
-
-    FsrEasuSetF(dir, len, (1.-pp.x)*(1.-pp.y), bL, eL, fL, gL, jL);
-    FsrEasuSetF(dir, len,    pp.x  *(1.-pp.y), cL, fL, gL, hL, kL);
-    FsrEasuSetF(dir, len, (1.-pp.x)*  pp.y  , fL, iL, jL, kL, nL);
-    FsrEasuSetF(dir, len,    pp.x  *  pp.y  , gL, jL, kL, lL, oL);
-
-    //------------------------------------------------------------------------------------------------------------------------------
-    // Normalize with approximation, and cleanup close to zero.
-    vec2 dir2 = dir * dir;
-    float dirR = dir2.x + dir2.y;
-    bool zro = dirR < (1.0/32768.0);
-    dirR = inversesqrt(dirR);
-#if (PERFORMANCE == 1)
-    if (zro) {
-        vec4 w = vec4(0.0);
-        w.x = (1.0 - pp.x) * (1.0 - pp.y);
-        w.y =        pp.x  * (1.0 - pp.y);
-        w.z = (1.0 - pp.x) *        pp.y;
-        w.w =        pp.x  *        pp.y;
-        pix.r = clamp(dot(w, vec4(fL, gL, jL, kL)), 0.0, 1.0);
-        return;
-    }
-#elif (PERFORMANCE == 0)
-    dirR = zro ? 1.0 : dirR;
-    dir.x = zro ? 1.0 : dir.x;
-#endif
-    dir *= vec2(dirR);
-    // Transform from {0 to 2} to {0 to 1} range, and shape with square.
-    len = len * 0.5;
-    len *= len;
-    // Stretch kernel {1.0 vert|horz, to sqrt(2.0) on diagonal}.
-    float stretch = dot(dir,dir) / (max(abs(dir.x), abs(dir.y)));
-    // Anisotropic length after rotation,
-    //  x := 1.0 lerp to 'stretch' on edges
-    //  y := 1.0 lerp to 2x on edges
-    vec2 len2 = vec2(1. +(stretch-1.0)*len, 1. -.5 * len);
-    // Based on the amount of 'edge',
-    // the window shifts from +/-{sqrt(2.0) to slightly beyond 2.0}.
-    float lob = .5 - .29 * len;
-    // Set distance^2 clipping point to the end of the adjustable window.
-    float clp = 1./lob;
-
-    //------------------------------------------------------------------------------------------------------------------------------
-    // Accumulation mixed with min/max of 4 nearest.
-    //    b c
-    //  e f g h
-    //  i j k l
-    //    n o
-    // Accumulation.
-    vec3 aC = vec3(0);
-    float aW = 0.;
-    FsrEasuTapF(aC, aW, vec2( 0,-1)-pp, dir, len2, lob, clp, bC);
-    FsrEasuTapF(aC, aW, vec2( 1,-1)-pp, dir, len2, lob, clp, cC);
-    FsrEasuTapF(aC, aW, vec2(-1, 1)-pp, dir, len2, lob, clp, iC);
-    FsrEasuTapF(aC, aW, vec2( 0, 1)-pp, dir, len2, lob, clp, jC);
-    FsrEasuTapF(aC, aW, vec2( 0, 0)-pp, dir, len2, lob, clp, fC);
-    FsrEasuTapF(aC, aW, vec2(-1, 0)-pp, dir, len2, lob, clp, eC);
-    FsrEasuTapF(aC, aW, vec2( 1, 1)-pp, dir, len2, lob, clp, kC);
-    FsrEasuTapF(aC, aW, vec2( 2, 1)-pp, dir, len2, lob, clp, lC);
-    FsrEasuTapF(aC, aW, vec2( 2, 0)-pp, dir, len2, lob, clp, hC);
-    FsrEasuTapF(aC, aW, vec2( 1, 0)-pp, dir, len2, lob, clp, gC);
-    FsrEasuTapF(aC, aW, vec2( 1, 2)-pp, dir, len2, lob, clp, oC);
-    FsrEasuTapF(aC, aW, vec2( 0, 2)-pp, dir, len2, lob, clp, nC);
-    //------------------------------------------------------------------------------------------------------------------------------
-    // Normalize and dering.
-#if (PERFORMANCE == 1)
-	pix = aC/aW;
-#elif (PERFORMANCE == 0)
-    vec3 min4 = min(min(fC,gC),min(jC,kC));
-    vec3 max4 = max(max(fC,gC),max(jC,kC));
-    pix=min(max4,max(min4,aC/aW));
-#endif
-}
-
-void EASU( out vec4 fragColor, in vec2 fragCoord )
-{
-    vec3 c;
-    vec4 con0,con1,con2,con3;
+      const gl = webgl.gl;
+      
+      // Only update texture if video is actually playing and has loaded enough data
+      if (video && !video.paused && camTexture && 
+          video.readyState >= 3 && // HAVE_FUTURE_DATA or better
+          video.videoWidth > 0 && video.videoHeight > 0) {
+          
+          try {
+              webgl.setActiveTexture(0, camTexture);
+              gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, video);
+              videoReady = true;
+          } catch (e) {
+              console.error("Error updating texture:", e);
+          }
+      }
     
-    // "rendersize" refers to size of source image before upscaling.
-    vec2 rendersize = vec2(texWidth, texHeight);
-    FsrEasuCon(
-        con0, con1, con2, con3, rendersize, rendersize, vec2(width, height)
-    );
-    FsrEasuF(c, fragCoord, con0, con1, con2, con3);
-    
-    fragColor = vec4(xyz_to_rgb(c.xyz), 1);
-}
+      webgl.clear();
+      webgl.setFloat('width', webgl.width);
+      webgl.setFloat('height', webgl.height);
+      
+      // Add safety checks for video dimensions
+      if (video && video.videoWidth > 0 && video.videoHeight > 0) {
+          webgl.setFloat('texWidth', video.videoWidth);
+          webgl.setFloat('texHeight', video.videoHeight);
+      } else {
+          webgl.setFloat('texWidth', webgl.width);
+          webgl.setFloat('texHeight', webgl.height);
+      }
+      
+      webgl.setBool('ENHANCE', ENHANCE && videoReady);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      requestAnimationFrame(loop);
+  }
 
-vec4 getPixel(vec2 pos) {
-    vec2 coord = (pos + .5) / vec2(width, height);
-    coord.y = 1.0 - coord.y;
-    return texture2D(camTexture, coord);
-}
+  function loadImage(url) {
+      return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'Anonymous';
+          img.src = url;
+          img.onload = () => {
+              resolve(img);
+          };
+          img.onerror = () => {
+              reject(img);
+          };
+      });
+  }
 
-void main() {
+  function takeScreenshot() {
+      const canvas = webgl.canvas;
+      const anchor = document.createElement('a');
+      anchor.setAttribute('download', 'screenshot.jpg');
+      anchor.setAttribute('href', canvas.toDataURL('image/jpeg', 0.92));
+      anchor.click();
+  }
 
-    vec4 e = getPixel(gl_FragCoord.xy);
+  async function setup() {
+      // WebGL is already initialized
+      let video = document.querySelector('video');
+      const gl = webgl.gl;
+      
+      // Reset state
+      videoReady = false;
+      videoLoadError = false;
+      
+      // Add error handling for video loading
+      video.addEventListener("error", function(e) {
+          console.error("Video error:", e);
+          document.querySelector('#message').innerHTML = "Error loading video: " + (e.message || "Unknown error");
+          document.querySelector('#message').className = "error";
+          document.querySelector('#message').style.display = "block";
+          videoLoadError = true;
+      });
+      
+      // Wait for enough data before creating texture
+      video.addEventListener("canplay", function() {
+          console.log("Video can play, preparing texture");
+          prepareTexture();
+      }, { once: true });
+      
+      // Make sure we have enough data for smooth playback
+      video.addEventListener("canplaythrough", function() {
+          console.log("Video can play through, updating texture");
+          // Ensure we have a valid texture
+          if (!camTexture || videoLoadError) {
+              prepareTexture();
+          }
+      }, { once: true });
+      
+      function prepareTexture() {
+          // Only create new texture if needed
+          if (video.videoWidth <= 0 || video.videoHeight <= 0) {
+              console.log("Video dimensions not available yet, waiting...");
+              return;
+          }
+          
+          console.log("Setting up texture with dimensions:", video.videoWidth, "x", video.videoHeight);
+          
+          if (camTexture) {
+              gl.deleteTexture(camTexture);
+          }
+          
+          camTexture = webgl.createTexture(0);
+          try {
+              // Make sure the video is actually ready
+              gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, 
+                           video.readyState >= 2 ? video : placeholderImage);
+              webgl.setActiveTexture(0, camTexture);
+              webgl.setInt('camTexture', 0);
+          } catch (e) {
+              console.error("Error setting up initial texture:", e);
+              // Fall back to placeholder
+              gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, placeholderImage);
+          }
+          
+          if (!loop.isRunning) {
+              loop.isRunning = true;
+              loop(0);
+          }
+      }
+      
+      video.addEventListener("playing", function() {
+          console.log("Video is playing");
+          // Video is definitely playing now, make sure we have a good texture
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
+              prepareTexture();
+          }
+          
+          // Update seekbar while playing
+          video.ontimeupdate = function() {
+              let percentage = (video.currentTime / video.duration) * 100;
+              document.querySelector("#seekbar_span").style.width = percentage + "%";
+          };
+      });
+      
+      if (!video) {
+          try {
+              fallbackImage = await loadImage('./error.gif');
+          } catch (ex) {
+              console.error(ex.message);
+              return false;
+          }
+      }
+      
+      // Try to play the video - add error handling
+      try {
+          console.log("Attempting to play video");
+          let playPromise = video.play();
+          
+          if (playPromise !== undefined) {
+              playPromise.then(_ => {
+                  console.log("Video playback started successfully");
+              })
+              .catch(error => {
+                  console.error("Video playback failed:", error);
+                  document.querySelector('#message').innerHTML = "Playback error: " + error.message;
+                  document.querySelector('#message').style.display = "block";
+                  
+                  // Hide error message after 5 seconds
+                  setTimeout(() => {
+                      document.querySelector('#message').style.display = "none";
+                  }, 5000);
+              });
+          }
+      } catch (e) {
+          console.error("Exception during video.play():", e);
+      }
+  }
 
-    if (ENHANCE == true) {	
-        vec4 e_xyz = vec4(rgb_to_xyz(e.rgb), 1);
-        EASU(e_xyz, (gl_FragCoord.xy + 0.5) / vec2(width, height));
+  function setOpacityMenu() {
+      // Prevent recursion
+      if (isSettingOpacity) return;
+      
+      isSettingOpacity = true;
+      
+      // Set all controls to visible except the description (which contains the video name)
+      HUD.forEach((node) => {
+          if (node.id !== "description") {
+              node.style.opacity = "1.0";
+          }
+      });
+      
+      // Reset fade timeout
+      startFadeTimeout();
+      
+      isSettingOpacity = false;
+  }
 
-        // fetch a 3x3 neighborhood around the pixel 'e',
-        //  a b c
-        //  d(e)f
-        //  g h i	
-        vec3 a = getPixel(gl_FragCoord.xy + vec2(-1.0,-1.0)).rgb;
-        vec3 b = getPixel(gl_FragCoord.xy + vec2( 0.0,-1.0)).rgb;
-        vec3 c = getPixel(gl_FragCoord.xy + vec2( 1.0,-1.0)).rgb;
-        vec3 f = getPixel(gl_FragCoord.xy + vec2( 1.0, 0.0)).rgb;
-        vec3 g = getPixel(gl_FragCoord.xy + vec2(-1.0, 1.0)).rgb;
-        vec3 h = getPixel(gl_FragCoord.xy + vec2( 0.0, 1.0)).rgb;
-        vec3 d = getPixel(gl_FragCoord.xy + vec2(-1.0, 0.0)).rgb;
-        vec3 i = getPixel(gl_FragCoord.xy + vec2( 1.0, 1.0)).rgb;;
-        // Soft min and max.
-        //  a b c			b
-        //  d e f * 0.5	+ d e f * 0.5
-        //  g h i			h
-        // These are 2.0x bigger (factored out the extra multiply).
+  document.addEventListener('mousemove', (event) => {setOpacityMenu();})
+  document.addEventListener('mousedown', (event) => {setOpacityMenu();})
+  document.addEventListener('mouseup', (event) => {setOpacityMenu();})
+  var seekbar = document.querySelector("#seekbar");
+  seekbar.addEventListener('click', (event) => {setVideoPos(event);})
 
-        vec3 mnRGB = min(min(min(d, e.rgb), min(f, b)), h);
-        vec3 mnRGB2 = min(mnRGB, min(min(a, c), min(g, i)));
-        mnRGB += mnRGB2;
+  function setVideoPos(event) {
+      var offset = event.offsetX;
+      var totalWidth = seekbar.offsetWidth;
+      var percentage = ( offset / totalWidth );
+      var vidTime = video.duration * percentage;
+      video.currentTime = vidTime;
+  }
 
-        vec3 mxRGB = max(max(max(d, e.rgb), max(f, b)), h);
-        vec3 mxRGB2 = max(mxRGB, max(max(a, c), max(g, i)));
-        mxRGB += mxRGB2;
+  // Set up file selection functionality
+  (function localFileVideoPlayer() {
+      'use strict'
+      var URL = window.URL || window.webkitURL
+      var displayMessage = function (message, isError) {
+          var element = document.querySelector('#message')
+          element.innerHTML = message
+          element.className = isError ? 'error' : 'info'
+          element.style.display = "block";
+      }
+      
+      var handleFileSelection = function (event) {
+          console.log("File selection event triggered");
+          
+          // Store all selected files in the playlist
+          if (this.files && this.files.length > 0) {
+              videoFiles = Array.from(this.files);
+              console.log("Selected files:", videoFiles.length);
+              
+              // Reset the current index
+              currentVideoIndex = 0;
+              
+              // Check if the first file is playable
+              var file = videoFiles[0];
+              var type = file.type;
+              var videoNode = document.querySelector('video');
+              var canPlay = videoNode.canPlayType(type);
+              if (canPlay === '') canPlay = 'no';
+              var message = 'Playlist loaded with ' + videoFiles.length + ' video(s). Can play type "' + type + '": ' + canPlay;
+              var isError = canPlay === 'no';
+              displayMessage(message, isError);
+              console.log(message);
 
-        // Smooth minimum distance to signal limit divided by smooth max.
-        vec3 rcpMRGB = 1.0 / mxRGB;
-        vec3 ampRGB = clamp(min(mnRGB, 2.0 - mxRGB) * rcpMRGB, 0.0, 1.0);
+              if (isError) {
+                  return;
+              }
+              
+              // Show prev/next buttons if we have more than one file
+              if (videoFiles.length > 1 && prevButton && nextButton) {
+                  prevButton.style.display = 'block';
+                  nextButton.style.display = 'block';
+              } else if (prevButton && nextButton) {
+                  prevButton.style.display = 'none';
+                  nextButton.style.display = 'none';
+              }
+              
+              // Load first video
+              loadVideo(videoFiles[0]);
+              
+              // Hide message after 3 seconds
+              setTimeout(() => {
+                  document.querySelector('#message').style.display = "none";
+              }, 3000);
+              
+              // Start setup process
+              setup();
+          } else {
+              console.log("No files selected");
+              displayMessage("No files selected", true);
+              
+              // Hide message after 3 seconds
+              setTimeout(() => {
+                  document.querySelector('#message').style.display = "none";
+              }, 3000);
+          }
+      }
+      
+      var inputNode = document.querySelector('input');
+      inputNode.addEventListener('change', handleFileSelection, false);
+  })()
 
-        // Shaping amount of sharpening.
-        ampRGB = inversesqrt(ampRGB);
+  function playIntentFile(file) {
+      file = file.substring(1, file.length);
+      var type = file.type;
+      var videoNode = document.querySelector('video');
+      var canPlay = videoNode.canPlayType(type);
+      if (canPlay === '') canPlay = 'no';
+      var message = 'Can play type "' + type + '": ' + canPlay;
+      var isError = canPlay === 'no';
+      
+      document.querySelector('#message').innerHTML = message;
+      document.querySelector('#message').style.display = "block";
+      
+      // Hide message after 3 seconds
+      setTimeout(() => {
+          document.querySelector('#message').style.display = "none";
+      }, 3000);
+      
+      if (isError) {
+          return;
+      }
 
-        float peak = -3.0 * clamp(CONTRAST, 0.0, 1.0) + 8.0;
-        vec3 wRGB = -(1.0 / (ampRGB * peak));
-
-        vec3 rcpWeightRGB = 1.0 / (4.0 * wRGB + 1.0);
-
-        //					0 w 0
-        //  Filter shape:	w 1 w
-        //					0 w 0
-        vec3 window = (b + d) + (f + h);
-        vec3 outColor = clamp((window * wRGB + e.rgb) * rcpWeightRGB, 0.0, 1.0);
-
-        gl_FragColor = vec4(mix(e.rgb, outColor, SHARPENING), e.a);
-    }
-    else gl_FragColor = e;
-}
-`
-
-const vert = glsl`
-precision mediump float;
-attribute vec2 position;
-
-void main () {
-    gl_Position = vec4(position, 0, 1.0);
-}
-`
-const HUD = document.querySelectorAll('.hud');
-var fade = " ";
-var ENHANCE = true;
-var PLAY = true;
-const video = document.querySelector('video');
-let enhanceButton = document.getElementById("enhance");
-enhanceButton.addEventListener('click', () => {
-    ENHANCE = !ENHANCE;
-    if (ENHANCE) {enhanceButton.style.border = "dashed";}
-    else {enhanceButton.style.border = "none";}
+      // Reset playlist to just this file
+      videoFiles = [file];
+      currentVideoIndex = 0;
+      
+      // Hide prev/next buttons for single file
+      if (prevButton && nextButton) {
+          prevButton.style.display = 'none';
+          nextButton.style.display = 'none';
+      }
+      
+      var fileURL = URL.createObjectURL(file);
+      videoNode.src = fileURL;
+      if (currentVideoElement) {
+          currentVideoElement.textContent = file.name || "External Video";
+      }
+      setup();
+  }
 });
-let playButton = document.getElementById("play");
-playButton.addEventListener('click', () => {
-    PLAY = !PLAY;
-    if (PLAY) {video.play();}
-    else {video.pause();}
-});
-	
-let fallbackImage = null;
-
-let camTexture = null;
-
-const glea = new GLea({
-    glOptions: {
-        preserveDrawingBuffer: true
-    },
-    shaders: [
-        GLea.fragmentShader(frag),
-        GLea.vertexShader(vert)
-    ],
-    buffers: {
-        'position': GLea.buffer(2, [1, 1, -1, 1, 1, -1, -1, -1])
-    }
-}).create();
-
-window.addEventListener('resize', () => {
-    glea.resize();
-});
-
-const fpsElem = document.getElementById("fps");
-
-let then = 0;
-function loop(time) {
-    time *= 0.001;                          // convert to seconds
-    const deltaTime = time - then;          // compute time since last frame
-    then = time;                            // remember time for next frame
-    const fps = 1 / deltaTime;             // compute frames per second
-    fpsElem.textContent = fps.toFixed(1) + " " + ENHANCE + " "  // update fps display
- 
-    const { gl } = glea;
-    // Upload the image into the texture.
-    if (video) {
-        glea.setActiveTexture(0, camTexture);
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, video);  
-    }
-  
-    glea.clear();
-    glea.uni('width', glea.width);
-    glea.uni('height', glea.height);
-    glea.uni('texWidth', video.videoWidth);
-    glea.uni('texHeight', video.videoHeight);
-    glea.uniB('ENHANCE', ENHANCE);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    requestAnimationFrame(loop);
-}
-
-function loadImage(url) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.crossOrigin = 'Anonymous';
-        img.src = url;
-        img.onload = () => {
-            resolve(img);
-        };
-        img.onerror = () => {
-            reject(img);
-        };
-    });
-}
-
-function takeScreenshot() {
-    const { canvas } = glea;
-    const anchor = document.createElement('a');
-    anchor.setAttribute('download', 'selfie.jpg');
-    anchor.setAttribute('href', canvas.toDataURL('image/jpeg', 0.92));
-    anchor.click();
-}
-
-async function setup() {
-    let video = document.querySelector('video');
-    const { gl } = glea;
-    video.addEventListener("playing", function() {
-        camTexture = glea.createTexture(0);
-        // Upload the image into the texture.
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video || fallbackImage);
-  
-        glea.setActiveTexture(0, camTexture);
-
-        glea.uniI('camTexture', 0);
-	video.ontimeupdate = function(){
-            let percentage = ( video.currentTime / video.duration ) * 100;
-            document.querySelector("#seekbar_span").style.width = percentage+"%";
-
-        };
-        loop(0);
-    }, true);
-    if (! video) {
-        try {
-            fallbackImage = await loadImage('./error.gif')
-        } catch (ex) {
-            console.error(ex.message);
-            return false;
-        }
-    }
-    video.play();
-}
-
-document.addEventListener('mousemove', (event) => {setOpacityMenu();})
-document.addEventListener('mousedown', (event) => {setOpacityMenu();})
-document.addEventListener('mouseup', (event) => {setOpacityMenu();})
-var seekbar = document.querySelector("#seekbar");
-seekbar.addEventListener('click', (event) => {setVideoPos(event);})
-
-function setVideoPos(event) {
-    var offset = event.offsetX;
-    var totalWidth = seekbar.offsetWidth;
-    var percentage = ( offset / totalWidth );
-    var vidTime = video.duration * percentage;
-    video.currentTime = vidTime;
-	
-}
-
-var fadeEffect = setInterval(function () {
-    HUD.forEach((node) => {
-        if (node.style.opacity > 0) {
-            node.style.opacity -= 0.02;
-	}
-    });
-}, 100);
-
-function setOpacityMenu() {
-    HUD.forEach((node) => {
-        node.style.opacity = "1.0";
-    });
-}
-
-(function localFileVideoPlayer() {
-    'use strict'
-    var URL = window.URL || window.webkitURL
-    var displayMessage = function (message, isError) {
-        var element = document.querySelector('#message')
-        element.innerHTML = message
-        element.className = isError ? 'error' : 'info'
-    }
-    var playSelectedFile = function (event) {
-        var file = this.files[0];
-        var type = file.type;
-        var videoNode = document.querySelector('video');
-        var canPlay = videoNode.canPlayType(type);
-        if (canPlay === '') canPlay = 'no';
-        var message = 'Can play type "' + type + '": ' + canPlay;
-        var isError = canPlay === 'no';
-        displayMessage(message, isError)
-
-        if (isError) {
-            return
-        }
-
-        var fileURL = URL.createObjectURL(file);
-        videoNode.src = fileURL;
-        setup();
-    }
-    var inputNode = document.querySelector('input');
-    inputNode.addEventListener('change', playSelectedFile, false);
-})()
-
-function playIntentFile(file) {
-    file = file.substring(1, file.length )
-    alert(file);
-    var type = file.type;
-    var videoNode = document.querySelector('video')
-    var canPlay = videoNode.canPlayType(type);
-    if (canPlay === '') canPlay = 'no';
-    var message = 'Can play type "' + type + '": ' + canPlay;
-    var isError = canPlay === 'no';
-//
-
-//    if (isError) {
-//        alert(isError);
-//      return
-//    }
-
-    var fileURL = URL.createObjectURL(file);
-    videoNode.src = fileURL;
-    setup();
-}
