@@ -1,15 +1,4 @@
-video.addEventListener("ended", function() {
-      console.log("Video ended, playing next");
-      if (videoFiles.length > 1) {
-          // Play next video in playlist
-          currentVideoIndex = (currentVideoIndex + 1) % videoFiles.length;
-          loadVideo(videoFiles[currentVideoIndex]);
-      } else if (videoFiles.length === 1) {
-          // Repeat the single video
-          video.currentTime = 0;
-          video.play();
-      }
-  });document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function() {
   if (typeof frag === 'undefined' || typeof vert === 'undefined') {
     console.error('Shader variables not found! Make sure shader.js is loaded before script.js');
     document.querySelector('#message').innerHTML = 'Error: Shader not loaded correctly';
@@ -33,6 +22,7 @@ video.addEventListener("ended", function() {
           enhanceButton.classList.remove("active");
       }
   });
+  
   let playButton = document.getElementById("play");
   const playIcon = playButton.querySelector('.play-icon');
   const pauseIcon = playButton.querySelector('.pause-icon');
@@ -60,6 +50,19 @@ video.addEventListener("ended", function() {
           pauseIcon.style.display = 'none';
       }
   }
+
+  video.addEventListener("ended", function() {
+      console.log("Video ended, playing next");
+      if (videoFiles.length > 1) {
+          // Play next video in playlist
+          currentVideoIndex = (currentVideoIndex + 1) % videoFiles.length;
+          loadVideo(videoFiles[currentVideoIndex]);
+      } else if (videoFiles.length === 1) {
+          // Repeat the single video
+          video.currentTime = 0;
+          video.play();
+      }
+  });
 
   let videoFiles = [];
   let currentVideoIndex = 0;
@@ -137,6 +140,21 @@ video.addEventListener("ended", function() {
   }
 
   startFadeTimeout();
+
+  function setOpacityMenu() {
+      if (isSettingOpacity) return;
+
+      isSettingOpacity = true;
+
+      HUD.forEach((node) => {
+          // Show all HUD elements, including description
+          node.style.opacity = "1.0";
+      });
+
+      startFadeTimeout();
+
+      isSettingOpacity = false;
+  }
 
   let placeholderCanvas = document.createElement('canvas');
   placeholderCanvas.width = 2;
@@ -437,21 +455,6 @@ video.addEventListener("ended", function() {
       }
   }
 
-  function setOpacityMenu() {
-      if (isSettingOpacity) return;
-
-      isSettingOpacity = true;
-
-      HUD.forEach((node) => {
-          // Show all HUD elements, including description
-          node.style.opacity = "1.0";
-      });
-
-      startFadeTimeout();
-
-      isSettingOpacity = false;
-  }
-
   document.addEventListener('mousemove', (event) => {setOpacityMenu();})
   document.addEventListener('mousedown', (event) => {setOpacityMenu();})
   document.addEventListener('mouseup', (event) => {setOpacityMenu();})
@@ -464,6 +467,41 @@ video.addEventListener("ended", function() {
       var percentage = ( offset / totalWidth );
       var vidTime = video.duration * percentage;
       video.currentTime = vidTime;
+  }
+
+  function updateVideoAspectRatio() {
+      const video = document.querySelector('video');
+      const canvas = document.getElementById('canvas');
+      const gl = webgl.gl;
+
+      // Always maintain aspect ratio regardless of browser
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+          const videoAspect = video.videoWidth / video.videoHeight;
+          const canvasAspect = canvas.width / canvas.height;
+
+          let width, height, x, y;
+
+          if (videoAspect > canvasAspect) {
+              // Video is wider than the canvas, fit to width
+              width = canvas.width;
+              height = width / videoAspect;
+              x = 0;
+              y = (canvas.height - height) / 2;
+          } else {
+              // Video is taller than the canvas, fit to height
+              height = canvas.height;
+              width = height * videoAspect;
+              x = (canvas.width - width) / 2;
+              y = 0;
+          }
+
+          // Set the viewport to fit the video within the canvas while preserving aspect ratio
+          gl.viewport(x, y, width, height);
+          
+          console.log(`Aspect ratio set: Video (${videoAspect.toFixed(2)}), Canvas (${canvasAspect.toFixed(2)}), Viewport: ${width}x${height} at (${x},${y})`);
+      } else {
+          gl.viewport(0, 0, canvas.width, canvas.height);
+      }
   }
 
   (function localFileVideoPlayer() {
@@ -559,41 +597,6 @@ video.addEventListener("ended", function() {
           currentVideoElement.textContent = file.name || "External Video";
       }
       setup();
-  }
-
-  function updateVideoAspectRatio() {
-      const video = document.querySelector('video');
-      const canvas = document.getElementById('canvas');
-      const gl = webgl.gl;
-
-      // Always maintain aspect ratio regardless of browser
-      if (video.videoWidth > 0 && video.videoHeight > 0) {
-          const videoAspect = video.videoWidth / video.videoHeight;
-          const canvasAspect = canvas.width / canvas.height;
-
-          let width, height, x, y;
-
-          if (videoAspect > canvasAspect) {
-              // Video is wider than the canvas, fit to width
-              width = canvas.width;
-              height = width / videoAspect;
-              x = 0;
-              y = (canvas.height - height) / 2;
-          } else {
-              // Video is taller than the canvas, fit to height
-              height = canvas.height;
-              width = height * videoAspect;
-              x = (canvas.width - width) / 2;
-              y = 0;
-          }
-
-          // Set the viewport to fit the video within the canvas while preserving aspect ratio
-          gl.viewport(x, y, width, height);
-          
-          console.log(`Aspect ratio set: Video (${videoAspect.toFixed(2)}), Canvas (${canvasAspect.toFixed(2)}), Viewport: ${width}x${height} at (${x},${y})`);
-      } else {
-          gl.viewport(0, 0, canvas.width, canvas.height);
-      }
   }
 
   function formatRuntime(seconds) {
