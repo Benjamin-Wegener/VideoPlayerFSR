@@ -1,35 +1,56 @@
-# AMD-fidelityFX-SuperResolution-webGL
+# FSR Enhanced Video Player
 
-webGL implementation of AMDs fidelityFX Super Resolution using local video file (x265 only in edge and safari)
+A WebGL implementation of AMD's FidelityFX Super Resolution (FSR) technology for video upscaling in the browser.
 
-online demo: https://htmlpreview.github.io/?https://github.com/BenjaminWegener/AMD-fidelityFX-SuperResolution-webGL/blob/local_file-no-comparison/index.html
+## Overview
 
-there is also a version to play mp4 files locally: https://github.com/BenjaminWegener/AMD-fidelityFX-SuperResolution-webGL/tree/local-file
+This application lets you play local video files with real-time FSR upscaling applied through WebGL shaders. FSR improves the visual quality of videos by intelligently upscaling lower resolution content to your display resolution, preserving details and enhancing edges.
 
-```
-// Copyright (c) 2021 Advanced Micro Devices, Inc. All rights reserved.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-//
-// FidelityFX FSR v1.0.2 by AMD
-// ported to mpv by agyild - https://gist.github.com/agyild/82219c545228d70c5604f865ce0b0ce5
-// ported to WebGL by goingdigital - https://www.shadertoy.com/view/stXSWB
-// using glea.js by learosema - https://github.com/learosema/glea for webGL functions
-// using colorspace functions from tobspr - https://github.com/tobspr/GLSL-Color-Spaces/blob/master/ColorSpaces.inc.glsl
-```
+## Features
+
+- Upload and play local video files (supports multiple formats)
+- Toggle FSR enhancement on/off with visual indicator
+- Video player controls (play/pause, seekbar)
+- Multiple video playlist support with prev/next navigation
+- Fullscreen mode
+- Automatic UI fadeout when not in use
+
+## Technical Implementation
+
+The player uses:
+- WebGL for GPU-accelerated rendering and FSR processing
+- Custom shader implementation of AMD's FSR v1.0.2 algorithm
+- Custom WebGL utilities for shader management
+- Efficient texture handling for video frames
+
+## FSR Parameters
+
+The shader implementation includes configurable parameters:
+- `SHARPENING` (default: 2.0) - Controls sharpening intensity
+- `CONTRAST` (default: 2.0) - Adjusts how the shader handles high contrast areas
+- `PERFORMANCE` (0 or 1) - Toggle between quality (0) and performance (1) modes
+
+## Browser Compatibility
+
+- Chrome/Edge/Firefox for general video playback
+- Edge and Safari have additional support for x265 video codecs
+
+## Usage
+
+1. Open the application in your browser
+2. Click the eject button (⏏) to select video file(s)
+3. Use the controls to play/pause and navigate videos
+4. Toggle FSR enhancement with the sparkle button (✨)
+5. Click the fullscreen button (⦶) for a better viewing experience
+
+## Credits
+
+- FidelityFX FSR v1.0.2 by AMD
+- WebGL port based on:
+  - Initial mpv port by agyild - https://gist.github.com/agyild/82219c545228d70c5604f865ce0b0ce5
+  - ShaderToy implementation by goingdigital - https://www.shadertoy.com/view/stXSWB
+  - HTML5 video adaptation by @BenjaminWegener
+
+## License
+
+MIT License - See license text in shader.js for details.
