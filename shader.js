@@ -24,11 +24,14 @@ const frag = glsl`
 // ported to mpv by agyild - https://gist.github.com/agyild/82219c545228d70c5604f865ce0b0ce5
 // ported to WebGL by goingdigital - https://www.shadertoy.com/view/stXSWB
 // ported to HTML5 video by @BenjaminWegener
+// Enhanced with CMAA2 edge detection techniques
 
 // Parameter tuning
 #define SHARPENING 2.0 // Sharpening intensity: Adjusts sharpening intensity (1.0 is default. 0.0 to 2.0 recommended)
 #define CONTRAST 2.0 // Adjusts the range the shader adapts to high contrast (Higher values = more high contrast sharpening. 0.0 to 2.0)
 #define PERFORMANCE 1 // Whether to use optimizations for performance with loss of quality (0 for quality, 1 for performance)
+#define EDGE_THRESHOLD 0.15 // Threshold for edge detection (Inspired by CMAA2)
+#define EDGE_WEIGHT 1.2 // Weight applied to detected edges (Inspired by CMAA2)
 
 precision highp float;
 
@@ -68,12 +71,36 @@ vec3 xyz_to_rgb(vec3 xyz) {
 *
 * Updates:
 *   stretch definition fixed. Thanks nehon for the bug report!
+*   edge detection enhanced using CMAA2 techniques
 */
 
 vec3 FsrEasuCF(vec2 p) {
-	vec2 uv = (p + .5) / vec2(texWidth, texHeight);
-	vec4 color = texture2D(camTexture, uv);
+    vec2 uv = (p + .5) / vec2(texWidth, texHeight);
+    vec4 color = texture2D(camTexture, uv);
     return rgb_to_xyz(color.rgb);
+}
+
+// CMAA2-inspired conservative edge detection
+// Returns edge strength value between 0.0 and 1.0
+float detectEdge(vec3 a, vec3 b, vec3 c, vec3 d) {
+    // Calculate luminance using Rec. 709 weights (standard for HDTV)
+    float lA = dot(a, vec3(0.2126, 0.7152, 0.0722));
+    float lB = dot(b, vec3(0.2126, 0.7152, 0.0722));
+    float lC = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    float lD = dot(d, vec3(0.2126, 0.7152, 0.0722));
+    
+    // Compute bidirectional gradients (CMAA2 technique)
+    float gradH = abs(lA - lB) + abs(lC - lD);
+    float gradV = abs(lA - lC) + abs(lB - lD);
+    
+    // Take maximum gradient for edge detection
+    float maxGrad = max(gradH, gradV);
+    
+    // Apply non-linear smoothstep curve to enhance edges
+    // Using a gentler transition to reduce artifacts
+    float edge = smoothstep(EDGE_THRESHOLD, EDGE_THRESHOLD * 3.0, maxGrad);
+    
+    return edge;
 }
 
 /**** EASU ****/
@@ -119,7 +146,7 @@ void FsrEasuCon(
     con3 = vec4(0,4,0,0)/inputSizeInPixels.xyxy;
 }
 
-// Filtering for a given tap for the scalar.
+// Enhanced filtering for a given tap with edge detection
 void FsrEasuTapF(
     inout vec3 aC, // Accumulated color, with negative lobe.
     inout float aW, // Accumulated weight.
@@ -128,16 +155,17 @@ void FsrEasuTapF(
     vec2 len, // Length.
     float lob, // Negative lobe strength.
     float clp, // Clipping point.
-    vec3 c
+    vec3 c,
+    float edgeStrength // Edge strength from CMAA2-inspired detection
 )
 {
     // Tap color.
     // Rotate offset by direction.
-    vec2 v = vec2(dot(off, dir), dot(off,vec2(-dir.y,dir.x)));
+    vec2 v = vec2(dot(off, dir), dot(off, vec2(-dir.y, dir.x)));
     // Anisotropy.
     v *= len;
     // Compute distance^2.
-    float d2 = min(dot(v,v),clp);
+    float d2 = min(dot(v,v), clp);
     // Limit to the window as at corner, 2 taps can easily be outside.
     // Approximation of lancos2 without sin() or rcp(), or sqrt() to get x.
     //  (25/16 * (2/5 * x^2 - 1)^2 - (25/16 - 1)) * (1/4 * x^2 - 1)^2
@@ -147,23 +175,30 @@ void FsrEasuTapF(
     //  (a*(b*x^2-1)^2-(a-1))
     // Where 'a=1/(2*b-b^2)' and 'b' moves around the negative lobe.
     float wB = .4 * d2 - 1.;
-    float wA = lob * d2 -1.;
+    float wA = lob * d2 - 1.;
     wB *= wB;
     wA *= wA;
-    wB = 1.5625*wB-.5625;
-    float w=  wB * wA;
+    wB = 1.5625 * wB - .5625;
+    float w = wB * wA;
+    
+    // Apply edge preservation from CMAA2
+    // Enhance weight for edge pixels to preserve details better
+    float edgeAdjustedWeight = mix(1.0, EDGE_WEIGHT, edgeStrength);
+    w *= edgeAdjustedWeight;
+    
     // Do weighted average.
-    aC += c*w;
+    aC += c * w;
     aW += w;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
-// Accumulate direction and length.
+// Accumulate direction and length with enhanced edge sensitivity
 void FsrEasuSetF(
     inout vec2 dir,
     inout float len,
     float w,
-    float lA,float lB,float lC,float lD,float lE
+    float lA, float lB, float lC, float lD, float lE,
+    float edgeStrength // Edge strength from CMAA2-inspired detection
 )
 {
     // Direction is the '+' diff.
@@ -174,17 +209,22 @@ void FsrEasuSetF(
     // Length converts gradient reversal to 0, smoothly to non-reversal at 1, shaped, then adding horz and vert terms.
     float lenX = max(abs(lD - lC), abs(lC - lB));
     float dirX = lD - lB;
-    dir.x += dirX * w;
-    lenX = clamp(abs(dirX)/lenX,0.,1.);
+    
+    // Apply edge-aware weighting (CMAA2-inspired)
+    float edgeWeight = mix(1.0, EDGE_WEIGHT, edgeStrength);
+    dir.x += dirX * w * edgeWeight;
+    
+    lenX = clamp(abs(dirX) / lenX, 0., 1.);
     lenX *= lenX;
-    len += lenX * w;
+    len += lenX * w * edgeWeight;
+    
     // Repeat for the y axis.
     float lenY = max(abs(lE - lC), abs(lC - lA));
     float dirY = lE - lA;
-    dir.y += dirY * w;
-    lenY = clamp(abs(dirY) / lenY,0.,1.);
+    dir.y += dirY * w * edgeWeight;
+    lenY = clamp(abs(dirY) / lenY, 0., 1.);
     lenY *= lenY;
-    len += lenY * w;
+    len += lenY * w * edgeWeight;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
@@ -221,32 +261,45 @@ void FsrEasuF(
     vec2 p3 = p0 + con3.xy;
 
     // TextureGather is not available on WebGL2
-    vec4 off = vec4(-.5,.5,-.5,.5)*con1.xxyy;
+    vec4 off = vec4(-.5, .5, -.5, .5) * con1.xxyy;
     // textureGather to texture offsets
     // x=west y=east z=north w=south
-    vec3 bC = FsrEasuCF(p0 + off.xw); float bL = bC.g + 0.5 *(bC.r + bC.b);
-    vec3 cC = FsrEasuCF(p0 + off.yw); float cL = cC.g + 0.5 *(cC.r + cC.b);
-    vec3 iC = FsrEasuCF(p1 + off.xw); float iL = iC.g + 0.5 *(iC.r + iC.b);
-    vec3 jC = FsrEasuCF(p1 + off.yw); float jL = jC.g + 0.5 *(jC.r + jC.b);
-    vec3 fC = FsrEasuCF(p1 + off.yz); float fL = fC.g + 0.5 *(fC.r + fC.b);
-    vec3 eC = FsrEasuCF(p1 + off.xz); float eL = eC.g + 0.5 *(eC.r + eC.b);
-    vec3 kC = FsrEasuCF(p2 + off.xw); float kL = kC.g + 0.5 *(kC.r + kC.b);
-    vec3 lC = FsrEasuCF(p2 + off.yw); float lL = lC.g + 0.5 *(lC.r + lC.b);
-    vec3 hC = FsrEasuCF(p2 + off.yz); float hL = hC.g + 0.5 *(hC.r + hC.b);
-    vec3 gC = FsrEasuCF(p2 + off.xz); float gL = gC.g + 0.5 *(gC.r + gC.b);
-    vec3 oC = FsrEasuCF(p3 + off.yz); float oL = oC.g + 0.5 *(oC.r + oC.b);
-    vec3 nC = FsrEasuCF(p3 + off.xz); float nL = nC.g + 0.5 *(nC.r + nC.b);
+    vec3 bC = FsrEasuCF(p0 + off.xw); float bL = bC.g + 0.5 * (bC.r + bC.b);
+    vec3 cC = FsrEasuCF(p0 + off.yw); float cL = cC.g + 0.5 * (cC.r + cC.b);
+    vec3 iC = FsrEasuCF(p1 + off.xw); float iL = iC.g + 0.5 * (iC.r + iC.b);
+    vec3 jC = FsrEasuCF(p1 + off.yw); float jL = jC.g + 0.5 * (jC.r + jC.b);
+    vec3 fC = FsrEasuCF(p1 + off.yz); float fL = fC.g + 0.5 * (fC.r + fC.b);
+    vec3 eC = FsrEasuCF(p1 + off.xz); float eL = eC.g + 0.5 * (eC.r + eC.b);
+    vec3 kC = FsrEasuCF(p2 + off.xw); float kL = kC.g + 0.5 * (kC.r + kC.b);
+    vec3 lC = FsrEasuCF(p2 + off.yw); float lL = lC.g + 0.5 * (lC.r + lC.b);
+    vec3 hC = FsrEasuCF(p2 + off.yz); float hL = hC.g + 0.5 * (hC.r + hC.b);
+    vec3 gC = FsrEasuCF(p2 + off.xz); float gL = gC.g + 0.5 * (gC.r + gC.b);
+    vec3 oC = FsrEasuCF(p3 + off.yz); float oL = oC.g + 0.5 * (oC.r + oC.b);
+    vec3 nC = FsrEasuCF(p3 + off.xz); float nL = nC.g + 0.5 * (nC.r + nC.b);
    
+    //------------------------------------------------------------------------------------------------------------------------------
+    // Compute edge strength using CMAA2-inspired detection for each quadrant
+    float edgeTL = detectEdge(bC, cC, fC, gC);
+    float edgeTR = detectEdge(cC, bC, gC, fC);
+    float edgeBL = detectEdge(fC, gC, jC, kC);
+    float edgeBR = detectEdge(gC, fC, kC, jC);
+    
+    // Compute edge strength for each bilinear interpolation weight
+    float edgeStrengthTL = edgeTL;
+    float edgeStrengthTR = edgeTR;
+    float edgeStrengthBL = edgeBL;
+    float edgeStrengthBR = edgeBR;
+    
     //------------------------------------------------------------------------------------------------------------------------------
     // Simplest multi-channel approximate luma possible (luma times 2, in 2 FMA/MAD).
     // Accumulate for bilinear interpolation.
     vec2 dir = vec2(0);
     float len = 0.;
 
-    FsrEasuSetF(dir, len, (1.-pp.x)*(1.-pp.y), bL, eL, fL, gL, jL);
-    FsrEasuSetF(dir, len,    pp.x  *(1.-pp.y), cL, fL, gL, hL, kL);
-    FsrEasuSetF(dir, len, (1.-pp.x)*  pp.y  , fL, iL, jL, kL, nL);
-    FsrEasuSetF(dir, len,    pp.x  *  pp.y  , gL, jL, kL, lL, oL);
+    FsrEasuSetF(dir, len, (1.-pp.x)*(1.-pp.y), bL, eL, fL, gL, jL, edgeStrengthTL);
+    FsrEasuSetF(dir, len,    pp.x  *(1.-pp.y), cL, fL, gL, hL, kL, edgeStrengthTR);
+    FsrEasuSetF(dir, len, (1.-pp.x)*  pp.y  , fL, iL, jL, kL, nL, edgeStrengthBL);
+    FsrEasuSetF(dir, len,    pp.x  *  pp.y  , gL, jL, kL, lL, oL, edgeStrengthBR);
 
     //------------------------------------------------------------------------------------------------------------------------------
     // Normalize with approximation, and cleanup close to zero.
@@ -293,26 +346,31 @@ void FsrEasuF(
     // Accumulation.
     vec3 aC = vec3(0);
     float aW = 0.;
-    FsrEasuTapF(aC, aW, vec2( 0,-1)-pp, dir, len2, lob, clp, bC);
-    FsrEasuTapF(aC, aW, vec2( 1,-1)-pp, dir, len2, lob, clp, cC);
-    FsrEasuTapF(aC, aW, vec2(-1, 1)-pp, dir, len2, lob, clp, iC);
-    FsrEasuTapF(aC, aW, vec2( 0, 1)-pp, dir, len2, lob, clp, jC);
-    FsrEasuTapF(aC, aW, vec2( 0, 0)-pp, dir, len2, lob, clp, fC);
-    FsrEasuTapF(aC, aW, vec2(-1, 0)-pp, dir, len2, lob, clp, eC);
-    FsrEasuTapF(aC, aW, vec2( 1, 1)-pp, dir, len2, lob, clp, kC);
-    FsrEasuTapF(aC, aW, vec2( 2, 1)-pp, dir, len2, lob, clp, lC);
-    FsrEasuTapF(aC, aW, vec2( 2, 0)-pp, dir, len2, lob, clp, hC);
-    FsrEasuTapF(aC, aW, vec2( 1, 0)-pp, dir, len2, lob, clp, gC);
-    FsrEasuTapF(aC, aW, vec2( 1, 2)-pp, dir, len2, lob, clp, oC);
-    FsrEasuTapF(aC, aW, vec2( 0, 2)-pp, dir, len2, lob, clp, nC);
+    
+    // Calculate overall edge strength for the central pixel
+    float centerEdgeStrength = (edgeStrengthTL + edgeStrengthTR + edgeStrengthBL + edgeStrengthBR) * 0.25;
+    
+    FsrEasuTapF(aC, aW, vec2( 0,-1)-pp, dir, len2, lob, clp, bC, edgeStrengthTL);
+    FsrEasuTapF(aC, aW, vec2( 1,-1)-pp, dir, len2, lob, clp, cC, edgeStrengthTR);
+    FsrEasuTapF(aC, aW, vec2(-1, 1)-pp, dir, len2, lob, clp, iC, edgeStrengthBL);
+    FsrEasuTapF(aC, aW, vec2( 0, 1)-pp, dir, len2, lob, clp, jC, edgeStrengthBL);
+    FsrEasuTapF(aC, aW, vec2( 0, 0)-pp, dir, len2, lob, clp, fC, centerEdgeStrength);
+    FsrEasuTapF(aC, aW, vec2(-1, 0)-pp, dir, len2, lob, clp, eC, edgeStrengthTL);
+    FsrEasuTapF(aC, aW, vec2( 1, 1)-pp, dir, len2, lob, clp, kC, edgeStrengthBR);
+    FsrEasuTapF(aC, aW, vec2( 2, 1)-pp, dir, len2, lob, clp, lC, edgeStrengthBR);
+    FsrEasuTapF(aC, aW, vec2( 2, 0)-pp, dir, len2, lob, clp, hC, edgeStrengthTR);
+    FsrEasuTapF(aC, aW, vec2( 1, 0)-pp, dir, len2, lob, clp, gC, edgeStrengthTR);
+    FsrEasuTapF(aC, aW, vec2( 1, 2)-pp, dir, len2, lob, clp, oC, edgeStrengthBR);
+    FsrEasuTapF(aC, aW, vec2( 0, 2)-pp, dir, len2, lob, clp, nC, edgeStrengthBL);
+    
     //------------------------------------------------------------------------------------------------------------------------------
     // Normalize and dering.
 #if (PERFORMANCE == 1)
-	pix = aC/aW;
+    pix = aC/aW;
 #elif (PERFORMANCE == 0)
     vec3 min4 = min(min(fC,gC),min(jC,kC));
     vec3 max4 = max(max(fC,gC),max(jC,kC));
-    pix=min(max4,max(min4,aC/aW));
+    pix = min(max4, max(min4, aC/aW));
 #endif
 }
 
@@ -340,14 +398,14 @@ vec4 getPixel(vec2 pos) {
 void main() {
     vec4 e = getPixel(gl_FragCoord.xy);
 
-    if (ENHANCE == true) {	
+    if (ENHANCE == true) {    
         vec4 e_xyz = vec4(rgb_to_xyz(e.rgb), 1);
         EASU(e_xyz, (gl_FragCoord.xy + 0.5) / vec2(width, height));
 
         // fetch a 3x3 neighborhood around the pixel 'e',
         //  a b c
         //  d(e)f
-        //  g h i	
+        //  g h i    
         vec3 a = getPixel(gl_FragCoord.xy + vec2(-1.0,-1.0)).rgb;
         vec3 b = getPixel(gl_FragCoord.xy + vec2( 0.0,-1.0)).rgb;
         vec3 c = getPixel(gl_FragCoord.xy + vec2( 1.0,-1.0)).rgb;
@@ -356,10 +414,14 @@ void main() {
         vec3 h = getPixel(gl_FragCoord.xy + vec2( 0.0, 1.0)).rgb;
         vec3 d = getPixel(gl_FragCoord.xy + vec2(-1.0, 0.0)).rgb;
         vec3 i = getPixel(gl_FragCoord.xy + vec2( 1.0, 1.0)).rgb;;
+        
+        // CMAA2-inspired edge detection for sharpening
+        float edgeStrength = detectEdge(a, c, g, i);
+        
         // Soft min and max.
-        //  a b c			b
-        //  d e f * 0.5	+ d e f * 0.5
-        //  g h i			h
+        //  a b c            b
+        //  d e f * 0.5    + d e f * 0.5
+        //  g h i            h
         // These are 2.0x bigger (factored out the extra multiply).
 
         vec3 mnRGB = min(min(min(d, e.rgb), min(f, b)), h);
@@ -380,11 +442,14 @@ void main() {
         float peak = -3.0 * clamp(CONTRAST, 0.0, 1.0) + 8.0;
         vec3 wRGB = -(1.0 / (ampRGB * peak));
 
+        // Apply edge-aware sharpening (CMAA2-inspired)
+        wRGB *= mix(1.0, EDGE_WEIGHT, edgeStrength);
+
         vec3 rcpWeightRGB = 1.0 / (4.0 * wRGB + 1.0);
 
-        //					0 w 0
-        //  Filter shape:	w 1 w
-        //					0 w 0
+        //                  0 w 0
+        //  Filter shape:   w 1 w
+        //                  0 w 0
         vec3 window = (b + d) + (f + h);
         vec3 outColor = clamp((window * wRGB + e.rgb) * rcpWeightRGB, 0.0, 1.0);
 
