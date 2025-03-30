@@ -1,4 +1,15 @@
-document.addEventListener('DOMContentLoaded', function() {
+video.addEventListener("ended", function() {
+      console.log("Video ended, playing next");
+      if (videoFiles.length > 1) {
+          // Play next video in playlist
+          currentVideoIndex = (currentVideoIndex + 1) % videoFiles.length;
+          loadVideo(videoFiles[currentVideoIndex]);
+      } else if (videoFiles.length === 1) {
+          // Repeat the single video
+          video.currentTime = 0;
+          video.play();
+      }
+  });document.addEventListener('DOMContentLoaded', function() {
   if (typeof frag === 'undefined' || typeof vert === 'undefined') {
     console.error('Shader variables not found! Make sure shader.js is loaded before script.js');
     document.querySelector('#message').innerHTML = 'Error: Shader not loaded correctly';
@@ -185,11 +196,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
       document.querySelector("#seekbar_span").style.width = "0%";
 
-      if (videoNode.paused) {
-          PLAY = true;
-          videoNode.play();
-      }
-
+      // Set play state to true when loading a new video
+      PLAY = true;
+      videoNode.play();
+      
+      // Update the play/pause button appearance
+      updatePlayPauseButton();
+      
+      // Ensure aspect ratio is updated when a new video is loaded
       updateVideoAspectRatio();
   }
 
@@ -552,6 +566,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const canvas = document.getElementById('canvas');
       const gl = webgl.gl;
 
+      // Always maintain aspect ratio regardless of browser
       if (video.videoWidth > 0 && video.videoHeight > 0) {
           const videoAspect = video.videoWidth / video.videoHeight;
           const canvasAspect = canvas.width / canvas.height;
@@ -559,21 +574,23 @@ document.addEventListener('DOMContentLoaded', function() {
           let width, height, x, y;
 
           if (videoAspect > canvasAspect) {
-              // Video is wider than the canvas, fit to height
-              height = canvas.height;
-              width = height * videoAspect;
-              x = (canvas.width - width) / 2;
-              y = 0;
-          } else {
-              // Video is taller than the canvas, fit to width
+              // Video is wider than the canvas, fit to width
               width = canvas.width;
               height = width / videoAspect;
               x = 0;
               y = (canvas.height - height) / 2;
+          } else {
+              // Video is taller than the canvas, fit to height
+              height = canvas.height;
+              width = height * videoAspect;
+              x = (canvas.width - width) / 2;
+              y = 0;
           }
 
-          // Set the viewport to fit the video within the canvas
+          // Set the viewport to fit the video within the canvas while preserving aspect ratio
           gl.viewport(x, y, width, height);
+          
+          console.log(`Aspect ratio set: Video (${videoAspect.toFixed(2)}), Canvas (${canvasAspect.toFixed(2)}), Viewport: ${width}x${height} at (${x},${y})`);
       } else {
           gl.viewport(0, 0, canvas.width, canvas.height);
       }
