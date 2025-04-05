@@ -40,6 +40,8 @@ uniform float texWidth;
 uniform float texHeight;
 uniform bool ENHANCE;
 uniform sampler2D camTexture;
+uniform float videoAspect; // Video's aspect ratio (width/height)
+uniform float canvasAspect; // Canvas's aspect ratio (width/height)
 
 // Used to convert from linear RGB to XYZ space
 const mat3 RGB_2_XYZ = mat3(
@@ -267,9 +269,59 @@ void EASU(out vec4 fragColor, in vec2 fragCoord)
 }
 
 vec4 getPixel(vec2 pos) {
+    // Convert from pixel coordinates to normalized (0-1) range
     vec2 coord = (pos + .5) / vec2(width, height);
+    
+    // Track if we're dealing with portrait or landscape video
+    bool isPortraitVideo = videoAspect < 1.0;
+    
+    // Store original coordinates for determining letterboxing/pillarboxing
+    vec2 originalCoord = coord;
+    
+    // Apply aspect ratio correction
+    if (videoAspect > canvasAspect) {
+        // Video is wider than canvas - add letterboxing (black bars on top/bottom)
+        float scaledHeight = canvasAspect / videoAspect;
+        // Scale y-coordinate around center point (0.5)
+        coord.y = (coord.y - 0.5) * (1.0/scaledHeight) + 0.5;
+    } else {
+        // Video is taller than canvas - add pillarboxing (black bars on left/right)
+        float scaledWidth = videoAspect / canvasAspect;
+        // Scale x-coordinate around center point (0.5)
+        coord.x = (coord.x - 0.5) * (1.0/scaledWidth) + 0.5;
+    }
+    
+    // Flip y-coordinate as in original code
     coord.y = 1.0 - coord.y;
-    return texture2D(camTexture, coord);
+    
+    // Determine if we're in the valid video area or in the letterbox/pillarbox
+    bool inVideoArea = coord.x >= 0.0 && coord.x <= 1.0 && coord.y >= 0.0 && coord.y <= 1.0;
+    
+    if (inVideoArea) {
+        // More aggressive edge correction
+        // Use fixed offsets to ensure we're well away from the edges
+        float xOffset = 2.0 / texWidth;
+        float yOffset = 2.0 / texHeight;
+        
+        // For the dimension that matters most in the current orientation, use more aggressive correction
+        if (videoAspect > canvasAspect) {
+            // Letterboxed (top/bottom bars) - more aggressive y correction
+            yOffset = 3.0 / texHeight;
+        } else {
+            // Pillarboxed (left/right bars) - more aggressive x correction
+            xOffset = 3.0 / texWidth;
+        }
+        
+        // Apply inset to stay away from edges
+        coord.x = mix(xOffset, 1.0 - xOffset, coord.x);
+        coord.y = mix(yOffset, 1.0 - yOffset, coord.y);
+        
+        // Return the texture sample with corrected coordinates
+        return texture2D(camTexture, coord);
+    } else {
+        // Outside video area - return black
+        return vec4(0.0, 0.0, 0.0, 1.0);
+    }
 }
 
 void main() {

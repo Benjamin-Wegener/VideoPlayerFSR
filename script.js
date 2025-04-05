@@ -183,6 +183,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
   window.addEventListener('resize', () => {
     webgl.resize();
+    // Update canvas aspect ratio when window is resized
+    webgl.setFloat('canvasAspect', canvas.width/canvas.height);
     updateVideoAspectRatio();
   });
 
@@ -204,6 +206,10 @@ document.addEventListener('DOMContentLoaded', function() {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, placeholderImage);
       webgl.setActiveTexture(0, camTexture);
       webgl.setInt('camTexture', 0);
+      
+      // Set default aspect ratio values
+      webgl.setFloat('videoAspect', 16/9); // Default to 16:9 as fallback
+      webgl.setFloat('canvasAspect', canvas.width/canvas.height);
 
       const fileURL = URL.createObjectURL(file);
       videoNode.src = fileURL;
@@ -330,6 +336,9 @@ document.addEventListener('DOMContentLoaded', function() {
           console.log("Video metadata loaded. Dimensions:", video.videoWidth, "x", video.videoHeight);
           updateVideoInfo(video);
           prepareTexture();
+          // Make sure aspect ratios are updated as soon as metadata is available
+          webgl.setFloat('videoAspect', video.videoWidth / video.videoHeight);
+          webgl.setFloat('canvasAspect', canvas.width / canvas.height);
           updateVideoAspectRatio();
       });
 
@@ -371,6 +380,10 @@ document.addEventListener('DOMContentLoaded', function() {
                            video.readyState >= 2 ? video : placeholderImage);
               webgl.setActiveTexture(0, camTexture);
               webgl.setInt('camTexture', 0);
+              
+              // Update shader uniforms with current aspect ratios
+              webgl.setFloat('videoAspect', video.videoWidth / video.videoHeight);
+              webgl.setFloat('canvasAspect', canvas.width / canvas.height);
           } catch (e) {
               console.error("Error setting up initial texture:", e);
               gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, placeholderImage);
@@ -474,33 +487,18 @@ document.addEventListener('DOMContentLoaded', function() {
       const canvas = document.getElementById('canvas');
       const gl = webgl.gl;
 
-      // Always maintain aspect ratio regardless of browser
+      // Always use the full canvas viewport
+      gl.viewport(0, 0, canvas.width, canvas.height);
+
+      // Calculate aspect ratios and pass to shader
       if (video.videoWidth > 0 && video.videoHeight > 0) {
           const videoAspect = video.videoWidth / video.videoHeight;
           const canvasAspect = canvas.width / canvas.height;
-
-          let width, height, x, y;
-
-          if (videoAspect > canvasAspect) {
-              // Video is wider than the canvas, fit to width
-              width = canvas.width;
-              height = width / videoAspect;
-              x = 0;
-              y = (canvas.height - height) / 2;
-          } else {
-              // Video is taller than the canvas, fit to height
-              height = canvas.height;
-              width = height * videoAspect;
-              x = (canvas.width - width) / 2;
-              y = 0;
-          }
-
-          // Set the viewport to fit the video within the canvas while preserving aspect ratio
-          gl.viewport(x, y, width, height);
           
-          console.log(`Aspect ratio set: Video (${videoAspect.toFixed(2)}), Canvas (${canvasAspect.toFixed(2)}), Viewport: ${width}x${height} at (${x},${y})`);
-      } else {
-          gl.viewport(0, 0, canvas.width, canvas.height);
+          webgl.setFloat('videoAspect', videoAspect);
+          webgl.setFloat('canvasAspect', canvasAspect);
+          
+          console.log(`Aspect ratio set: Video (${videoAspect.toFixed(2)}), Canvas (${canvasAspect.toFixed(2)}), Full viewport enabled`);
       }
   }
 
