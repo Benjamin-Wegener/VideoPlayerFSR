@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
   if (typeof frag === 'undefined' || typeof vert === 'undefined') {
     console.error('Shader variables not found! Make sure shader.js is loaded before script.js');
     document.querySelector('#message').innerHTML = 'Error: Shader not loaded correctly';
@@ -12,56 +12,81 @@ document.addEventListener('DOMContentLoaded', function() {
   var PLAY = true;
   const video = document.querySelector('video');
   let enhanceButton = document.getElementById("enhance");
-  // Initialize the enhance button as active with glow effect
+
   enhanceButton.classList.add("active");
   enhanceButton.addEventListener('click', () => {
-      ENHANCE = !ENHANCE;
-      if (ENHANCE) {
-          enhanceButton.classList.add("active");
-      } else {
-          enhanceButton.classList.remove("active");
-      }
+    ENHANCE = !ENHANCE;
+    enhanceButton.classList.toggle("active", ENHANCE);
   });
-  
+
+  let cursorIdleTimer;
+  let isFullscreen = false;
+
+  function toggleFullScreen(element) {
+  if (!document.fullscreenElement) {
+    (element.requestFullscreen?.() ||
+     element.webkitRequestFullscreen?.() ||
+     element.msRequestFullscreen?.())
+      ?.then(() => {
+        console.log("Entered fullscreen");
+        document.body.classList.add('fullscreen-active');
+        isFullscreen = true;
+        startCursorIdleTimer();
+      })
+      .catch(err => {
+        console.warn("Failed to enter fullscreen:", err);
+      });
+  } else {
+    (document.exitFullscreen?.() ||
+     document.webkitExitFullscreen?.() ||
+     document.msExitFullscreen?.())
+      ?.then(() => {
+        console.log("Exited fullscreen");
+        document.body.classList.remove('fullscreen-active', 'cursor-idle');
+        isFullscreen = false;
+        clearTimeout(cursorIdleTimer);
+      })
+      .catch(err => {
+        console.warn("Failed to exit fullscreen:", err);
+      });
+  }
+}
+
+
+  function startCursorIdleTimer() {
+    clearTimeout(cursorIdleTimer);
+    document.body.classList.remove('cursor-idle');
+    cursorIdleTimer = setTimeout(() => {
+      if (isFullscreen) document.body.classList.add('cursor-idle');
+    }, 3000);
+  }
+
   let playButton = document.getElementById("play");
   const playIcon = playButton.querySelector('.play-icon');
   const pauseIcon = playButton.querySelector('.pause-icon');
-  
-  // Set initial state of play/pause button
-  updatePlayPauseButton();
-  
-  playButton.addEventListener('click', () => {
-      PLAY = !PLAY;
-      if (PLAY) {
-          video.play();
-      } else {
-          video.pause();
-      }
-      updatePlayPauseButton();
-  });
-  
-  // Function to update play/pause button appearance
+
   function updatePlayPauseButton() {
-      if (PLAY) {
-          playIcon.style.display = 'none';
-          pauseIcon.style.display = 'block';
-      } else {
-          playIcon.style.display = 'block';
-          pauseIcon.style.display = 'none';
-      }
+    playIcon.style.display = PLAY ? 'none' : 'block';
+    pauseIcon.style.display = PLAY ? 'block' : 'none';
   }
 
-  video.addEventListener("ended", function() {
-      console.log("Video ended, playing next");
-      if (videoFiles.length > 1) {
-          // Play next video in playlist
-          currentVideoIndex = (currentVideoIndex + 1) % videoFiles.length;
-          loadVideo(videoFiles[currentVideoIndex]);
-      } else if (videoFiles.length === 1) {
-          // Repeat the single video
-          video.currentTime = 0;
-          video.play();
-      }
+  updatePlayPauseButton();
+
+  playButton.addEventListener('click', () => {
+    PLAY = !PLAY;
+    if (PLAY) video.play();
+    else video.pause();
+    updatePlayPauseButton();
+  });
+
+  video.addEventListener("ended", () => {
+    if (videoFiles.length > 1) {
+      currentVideoIndex = (currentVideoIndex + 1) % videoFiles.length;
+      loadVideo(videoFiles[currentVideoIndex]);
+    } else if (videoFiles.length === 1) {
+      video.currentTime = 0;
+      video.play();
+    }
   });
 
   let videoFiles = [];
@@ -70,22 +95,23 @@ document.addEventListener('DOMContentLoaded', function() {
   let fileInfoElement = document.getElementById("file-info");
 
   let nextButton = document.getElementById("next");
+  let prevButton = document.getElementById("prev");
+
   if (nextButton) {
     nextButton.addEventListener('click', () => {
-        if (videoFiles.length > 1) {
-            currentVideoIndex = (currentVideoIndex + 1) % videoFiles.length;
-            loadVideo(videoFiles[currentVideoIndex]);
-        }
+      if (videoFiles.length > 1) {
+        currentVideoIndex = (currentVideoIndex + 1) % videoFiles.length;
+        loadVideo(videoFiles[currentVideoIndex]);
+      }
     });
   }
 
-  let prevButton = document.getElementById("prev");
   if (prevButton) {
     prevButton.addEventListener('click', () => {
-        if (videoFiles.length > 1) {
-            currentVideoIndex = (currentVideoIndex - 1 + videoFiles.length) % videoFiles.length;
-            loadVideo(videoFiles[currentVideoIndex]);
-        }
+      if (videoFiles.length > 1) {
+        currentVideoIndex = (currentVideoIndex - 1 + videoFiles.length) % videoFiles.length;
+        loadVideo(videoFiles[currentVideoIndex]);
+      }
     });
   }
 
@@ -93,28 +119,46 @@ document.addEventListener('DOMContentLoaded', function() {
   let parentElement = document.getElementById("parent");
   if (fullscreenButton) {
     fullscreenButton.addEventListener('click', () => {
-        toggleFullScreen(parentElement);
+      toggleFullScreen(parentElement);
     });
   }
 
-  function toggleFullScreen(element) {
-      if (!document.fullscreenElement) {
-          if (element.requestFullscreen) {
-              element.requestFullscreen();
-          } else if (element.webkitRequestFullscreen) {
-              element.webkitRequestFullscreen();
-          } else if (element.msRequestFullscreen) {
-              element.msRequestFullscreen();
-          }
-      } else {
-          if (document.exitFullscreen) {
-              document.exitFullscreen();
-          } else if (document.webkitExitFullscreen) {
-              document.webkitExitFullscreen();
-          } else if (document.msExitFullscreen) {
-              document.msExitFullscreen();
-          }
-      }
+  const fullscreenOverlay = document.getElementById('fullscreen-overlay');
+let fsClickTimer = null;
+
+let lastClickTime = 0;
+
+fullscreenOverlay.addEventListener('click', (event) => {
+  // Ignore clicks on UI elements
+  if (event.target.closest('.hud')) return;
+
+  const now = Date.now();
+  if (now - lastClickTime < 300) {
+    // Double-click detected
+    toggleFullScreen(parentElement);
+    lastClickTime = 0;
+  } else {
+    lastClickTime = now;
+  }
+});
+
+
+  document.addEventListener('fullscreenchange', handleFullscreenChange);
+  document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+  document.addEventListener('msfullscreenchange', handleFullscreenChange);
+
+  function handleFullscreenChange() {
+    isFullscreen = !!document.fullscreenElement ||
+                   !!document.webkitFullscreenElement ||
+                   !!document.msFullscreenElement;
+
+    if (isFullscreen) {
+      document.body.classList.add('fullscreen-active');
+      startCursorIdleTimer();
+    } else {
+      document.body.classList.remove('fullscreen-active', 'cursor-idle');
+      clearTimeout(cursorIdleTimer);
+    }
   }
 
   let fadeTimeout;
@@ -468,9 +512,49 @@ document.addEventListener('DOMContentLoaded', function() {
       }
   }
 
-  document.addEventListener('mousemove', (event) => {setOpacityMenu();})
-  document.addEventListener('mousedown', (event) => {setOpacityMenu();})
-  document.addEventListener('mouseup', (event) => {setOpacityMenu();})
+  // Update mouse movement handling for cursor hiding
+  document.addEventListener('mousemove', function(event) {
+    setOpacityMenu();
+    
+    if (isFullscreen) {
+        startCursorIdleTimer();
+    }
+  });
+  
+  document.addEventListener('mousedown', function(event) {
+    setOpacityMenu();
+    
+    if (isFullscreen) {
+        startCursorIdleTimer();
+    }
+  });
+  
+  document.addEventListener('mouseup', function(event) {
+    setOpacityMenu();
+    
+    if (isFullscreen) {
+        startCursorIdleTimer();
+    }
+  });
+  
+  document.addEventListener('keydown', function(event) {
+  if (isFullscreen) {
+    document.body.classList.remove('cursor-idle');
+    startCursorIdleTimer();
+  }
+
+  // ✅ Toggle play/pause on Spacebar
+  if (event.code === 'Space') {
+    event.preventDefault(); // Prevent page scroll
+    PLAY = !PLAY;
+    if (PLAY) video.play();
+    else video.pause();
+    updatePlayPauseButton();
+  }
+   //   console.log("event code: " + event.code);
+});
+
+
   var seekbar = document.querySelector("#seekbar");
   seekbar.addEventListener('click', (event) => {setVideoPos(event);})
 

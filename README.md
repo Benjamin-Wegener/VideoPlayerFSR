@@ -48,12 +48,12 @@ Try the online demo: [FSR Enhanced Video Player Demo](https://htmlpreview.github
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/BenjaminWegener/AMD-fidelityFX-SuperResolution-webGL.git
+   git clone https://github.com/Benjamin-Wegener/VideoPlayerFSR
    ```
 
 2. Navigate to the project directory:
    ```bash
-   cd AMD-fidelityFX-SuperResolution-webGL
+   cd VideoPlayerFSR
    ```
 
 3. Open `index.html` in your preferred browser or serve it with a local web server.
@@ -98,7 +98,7 @@ You can adjust several parameters in the `shader.js` file:
 
 ## 🤝 Contributing
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/BenjaminWegener/AMD-fidelityFX-SuperResolution-webGL/issues).
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/Benjamin-Wegener/VideoPlayerFSR/issues).
 
 To contribute:
 
@@ -140,7 +140,7 @@ SOFTWARE.
 
 **Benjamin Wegener**
 
-- GitHub: [@BenjaminWegener](https://github.com/BenjaminWegener)
+- GitHub: [@Benjamin-Wegener](https://github.com/Benjamin-Wegener)
 
 ## 🙏 Acknowledgments
 

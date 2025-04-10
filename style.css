@@ -16,7 +16,22 @@ video, input {
 .hud {
     opacity: 1;
     color: white;
-    transition: opacity 0.3s ease; /* Add smooth transition for opacity changes */
+    transition: opacity 0.3s ease;
+    position: relative;
+    z-index: 10; /* HUD is above everything else */
+}
+
+#fullscreen-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 5; /* Behind HUD */
+    background: transparent;
+    cursor: pointer;
+    display: block;
+    pointer-events: auto; /* Important: capture clicks even in fullscreen */
 }
 
 #parent {
@@ -31,14 +46,19 @@ video, input {
 
 #canvas {
     grid-area: 1 / 1 / 7 / 10;
-    z-index: -2;
+    z-index: -1; /* Behind everything */
 }
 
+canvas {
+  pointer-events: none !important;
+}
+
+
 #box {
-    background-color: rgba(50, 50, 50, 0.7); /* Slightly transparent dark gray */
+    background-color: rgba(50, 50, 50, 0.7);
     grid-area: 6 / 1 / 7 / 10;
     border-radius: 0.5em;
-    z-index: -1;
+    z-index: 1;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -55,11 +75,11 @@ video, input {
     text-align: left;
     padding: 10px;
     z-index: 1;
-    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background */
+    background-color: rgba(0, 0, 0, 0.5);
     border-radius: 5px;
     margin: 10px;
     max-width: calc(100% - 20px);
-    pointer-events: none; /* Let mouse events pass through */
+    pointer-events: none;
 }
 
 #current-video {
@@ -123,10 +143,6 @@ video, input {
     display: flex;
     align-items: center;
     justify-content: center;
-}
-
-/* Improved button styling */
-#open, #play, #prev, #next, #enhance, #fullscreen {
     opacity: 0.85;
     transition: all 0.2s ease;
     border-radius: 50%;
@@ -173,7 +189,6 @@ video, input {
     fill: #ffcc00;
 }
 
-/* Make the enhance button shine when active */
 #enhance.active::after {
     content: '';
     position: absolute;
@@ -207,7 +222,6 @@ video, input {
     z-index: 9999;
 }
 
-/* Optimize SVG icons in the buttons */
 svg {
     width: 60%;
     height: 60%;
@@ -215,7 +229,6 @@ svg {
     transition: fill 0.3s ease;
 }
 
-/* Tape deck style for prev/next buttons */
 #prev svg, #next svg {
     fill: #f0f0f0;
 }
@@ -224,7 +237,6 @@ svg {
     fill: #ffffff;
 }
 
-/* Eject button styling */
 #open svg {
     fill: #f0f0f0;
 }
@@ -235,11 +247,26 @@ svg {
     transition: transform 0.2s ease;
 }
 
-/* Play/pause button styling */
 #play svg {
-    fill: #4CAF50;  /* Green color for play/pause */
+    fill: #4CAF50;
 }
 
 #play:hover svg {
     fill: #81C784;
+}
+
+.fullscreen-active {
+  cursor: none;
+}
+
+.fullscreen-active:hover {
+  cursor: auto;
+}
+
+.cursor-idle * {
+  cursor: none !important;
+}
+
+.fullscreen-active.cursor-idle {
+  cursor: none !important;
 }
