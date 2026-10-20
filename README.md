@@ -110,9 +110,7 @@ To contribute:
 
 ## 📜 License
 
-Distributed under the MIT License. See `LICENSE` for more information.
-
-MIT, see [LICENSE](LICENSE).
+Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
 
 ## 👨‍💻 Author
 
