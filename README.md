@@ -23,7 +23,7 @@ A high-quality web-based video player that implements AMD's FidelityFX Super Res
 
 ## 🖥️ Demo
 
-Try the online demo: [FSR Enhanced Video Player Demo](https://htmlpreview.github.io/?https://github.com/Benjamin-Wegener/VideoPlayerFSR/blob/master/index.html)
+Try the online demo: [FSR Enhanced Video Player Demo](https://htmlpreview.github.io/?https://github.com/Benjamin-Wegener/VideoPlayerFSR/blob/main/index.html)
 
 
 
